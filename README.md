@@ -1,16 +1,26 @@
-# Before Tabula Sapiens:
+Main steps:
 
-Before looking at the Tabula Sapiens atlas and studying all diseases in the UK-Biobank paper, I only studied biomarkers of Alzheimer's (AD) from cerebrospinal fluid proteomic papers. Therefore, I curated a single-cell dataset of AD at `/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/piehl_2022_gazestani_2023_integrative/results/data/piehl_nph_rerun_finer/sct_merged_piehl_nph_brain_subtypes.rds`. The following code files worked on that seurat object:
+# Attention!
+The codebase is currently under construction, with many full paths scattered around files. Before running, please check if there are any full paths pointing to irrelavant paths yet.
 
-* `seismic.R`: seismic is a tool for modeling correlation between cell type specificity and GWAS MAGMA score (bioRxiv, `https://www.biorxiv.org/content/10.1101/2024.05.04.592534v1`). This code remodels seismic into taking in proteomic fold change instead of MAGMA score.
-* `seismic_uk_biobank_ppp_binary-class.ipynb`: Jupyer notebook for implementing binary classifier of significant biomarkers of Alzheimer's from UK-Biobank plasma proteomic paper.
-* `seismic_uk_biobank_ppp_binary-class_other_neuro_diseases.ipynb`: Same as above, but for other neurodegenerative diseases.
+# Data preparation
+## Atlas data
+* Download full Tabula Sapiens single-cell object (Tabula Sapiens v1 data)
+* Explore the Tabula Sapiens Seurat object (count number of unique cell-tissue pair, number of cells in each pair, ...): use `tabula_sapiens_cell_tissue_specificity/tabula_sapiens_explore_cell_tissue_step1.R`.
+* Generate normalized pseudobulk gene expression for each cell-tissue pair: use `tabula_sapiens_cell_tissue_specificity/tabula_sapiens_cell_spec_mean_expression_step2.R`. Assume the mean expression matrix is saved at `/your/path/data/mean_exp.tsv`.
+* Merge cell-tissue pairs with similar gene expression profiles: use `tabula_sapiens_cell_tissue_specificity/merge_similar_cell_tissue.ipynb`. Assume the merged expression matrix is saved at `/your/path/data/merged_exp.tsv`.
+
+## Proteomic data
+* Download summary statistics for plasma proteomic data
 
 
-# Present
-Then I look at the UK-Biobank plasma proteomics paper. Now the proteins in the blood can come from anywhere in the body, while in the CSF they are mostly confined by the blood-brain barrier. So that's why I have to curate a new dataset that includes all human cells. Some of the relevant code:
-
-* `human_atlas_merge_longrun.R`: Code for merging the human brain cell dataset and the downsampled Tabula Sapiens dataset.
-* `human_brain_atlas_explore.R`: Code for exploratory data analysis and processing of the Human Cortical Cell Atlas. In the end, 3 brain regions commonly studied for AD were chosen: middle temporal gyrus (MTG), angular gyrus (AG), and dorsolateral prefrontal cortex (DFC).
-* `tabula_sapiens_all_cells_explore.R`: Code for exploratory data analysis and processing of the Tabula Sapiens atlas.
-* `human_atlas_uk_biobank_ppp.ipynb`: Jupyter notebook for exploring relationships between the newly curated human single-cell atlas and UK-Biobank dataset.
+# Run the analysis
+* All relevant code in `python_main_cell_type_spec_method`
+* Run the `auto-script` version of the .py code that accepts relevant input arguments. Other arguments can be found in the relavant bash files in the `bash_scripts` folder.
+* 5 versions of code:
+    * `elastic_full_dataset`: Run 1000 ElasticNets of various hyperparameters on the full dataset, and obtain cell-tissue coefficients.
+    * `elastic_kfold_ver2`: Run ElasticNet using k-fold cross-validation, find the best performing model, and obtain cell-tissue coefficients.
+    * `lasso_stability_analyses`: Run a custom-made algorithm to find a suitable lambda value for LASSO, then run LASSO stability analysis across 2000 subsamples of the original dataset, then obtain the most stable cell-tissues.
+    * `tree_based_methods`: Run random forests and obtain cell-tissue importance scores.
+    * `univar_regression`: Run univariate regression for each cell-tissue and rank cell-tissues based on F statistic.
+* An example way of running LASSO stability: `python python_main_cell_type_spec_method/lasso_stability_analyses_auto-script.py --atlas_smal_path /your/path/data/merged_exp.tsv --atlas_path /your/path/data/mean_exp.tsv --save_path_suffix trial`.
