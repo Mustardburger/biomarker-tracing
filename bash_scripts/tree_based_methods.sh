@@ -1,14 +1,5 @@
 #!/bin/bash
 
-#BSUB -J atlas
-#BSUB -P acc_DiseaseGeneCell
-#BSUB -n 1
-#BSUB -W 1:00
-#BSUB -R rusage[mem=4000]
-#BSUB -M 30000
-#BSUB -eo /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/logs/%J.stderr 
-#BSUB -L /bin/bash
-
 # Load the modules
 module load anaconda3/latest
 source activate scanpy-env
@@ -22,10 +13,10 @@ save_path=$4
 disease=$5
 output_label=$6
 
-num_trees=1000
-min_samples_split=10
-min_samples_leaf=2
-max_samples=0.7
+num_trees=$7
+min_samples_split=$8
+min_samples_leaf=$9
+max_samples=${10}
 
 # Version of the code when splitting the data by cell-tissue pair
 python $script_dir \

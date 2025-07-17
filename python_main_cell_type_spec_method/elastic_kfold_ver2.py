@@ -27,6 +27,33 @@ def get_split_data(df, inds, abs_hr=False):
     return X_train, hr
 
 
+# A function to plot top coefficients
+def _plot(inds, coef_df: pd.DataFrame, disease: str, save_path: str, save_name: str, num_coeffs: int, alpha: float, l1_ratio: float):
+    
+    dis_coef = coef_df[coef_df["disease"] == disease].drop(columns=["disease"]).copy().iloc[inds, :].copy()
+    melt_raw = pd.melt(dis_coef).rename(columns={"variable": "cell_tissue", "value": "coefficient"})
+    logging.error(melt_raw.shape)
+    melt_sort_df = (
+        melt_raw
+        .groupby("cell_tissue")
+        .mean()
+        .reset_index()
+        .sort_values(by="coefficient", ascending=False)
+    )
+    top_cel_tis = melt_sort_df.iloc[list(range(num_coeffs)) + list(range(-num_coeffs, 0))]["cell_tissue"].tolist()
+    
+    top_coefs = melt_raw[melt_raw["cell_tissue"].isin(top_cel_tis)].copy()
+    top_coefs['tmp'] = pd.Categorical(top_coefs['cell_tissue'], categories=top_cel_tis, ordered=True)
+    top_coefs = top_coefs.sort_values('tmp')
+    top_coefs["labels"] = top_coefs["coefficient"].apply(lambda x: "positive" if x > 0 else "negative")
+    
+    plt.figure(figsize=(9, 6))
+    sns.barplot(data=top_coefs, x="coefficient", y="cell_tissue", hue="labels", dodge=False)
+    plt.axvline(0.0, color='black', linestyle='--')
+    plt.title(f"Coeffs across kfolds of model with alpha={alpha:.3f} and l1_ratio={l1_ratio:.3f}")
+    plt.savefig(f"{save_path}/{save_name}.png", bbox_inches="tight", dpi=300)
+
+
 # A function to load the proteomics data
 def load_prot_data(base_path: str, disease: str, atlas: pd.DataFrame):
 
@@ -101,39 +128,24 @@ def load_prot_data(base_path: str, disease: str, atlas: pd.DataFrame):
 
 
 # For each disease, rank and plot the top most positive and top most negative coefficients
-def plot_top_coeff_ens(args, disease, coef_df, perf_df, save_path, num_coeffs=5):
-    
-    retained_inds = perf_df[(perf_df["pearson_r"] >= args.pearson_r_thres) & (perf_df["r2"] >= args.r2_score_thres)].index
-    if len(retained_inds.tolist()) == 0:
-        # The cutoff is too stringent. Then pick the top 60 percentile
-        pearson_r_cutoff = np.percentile(perf_df["pearson_r"].tolist(), 60)
-        r2_score_cutoff = np.percentile(perf_df["r2"].tolist(), 60)
-        retained_inds = perf_df[(perf_df["pearson_r"] >= pearson_r_cutoff) & (perf_df["r2"] >= r2_score_cutoff)].index
+def plot_top_coeff_ens(args, disease: str, coef_df: pd.DataFrame, perf_df: pd.DataFrame, 
+                       coef_df_full: pd.DataFrame, full_model_df: pd.DataFrame, 
+                       save_path: str, num_coeffs=10):
 
+    # Get the top params
+    model_runs = full_model_df["model_run"].unique().tolist()
 
-    dis_coef = coef_df[coef_df["disease"] == disease].drop(columns=["disease"]).copy().iloc[retained_inds, :].copy()
-    melt_raw = pd.melt(dis_coef).rename(columns={"variable": "cell_tissue", "value": "coefficient"})
-    logging.error(melt_raw)
-    logging.error(melt_raw.shape)
-    melt_sort_df = (
-        melt_raw
-        .groupby("cell_tissue")
-        .mean()
-        .reset_index()
-        .sort_values(by="coefficient", ascending=False)
-    )
-    top_cel_tis = melt_sort_df.iloc[list(range(num_coeffs)) + list(range(-num_coeffs, 0))]["cell_tissue"].tolist()
-    
-    top_coefs = melt_raw[melt_raw["cell_tissue"].isin(top_cel_tis)].copy()
-    top_coefs['tmp'] = pd.Categorical(top_coefs['cell_tissue'], categories=top_cel_tis, ordered=True)
-    top_coefs = top_coefs.sort_values('tmp')
-    top_coefs["labels"] = top_coefs["coefficient"].apply(lambda x: "positive" if x > 0 else "negative")
-    
-    plt.figure(figsize=(9, 6))
-    sns.boxplot(data=top_coefs, x="coefficient", y="cell_tissue", hue="labels", dodge=False)
-    plt.axvline(0.0, color='black', linestyle='--')
-    plt.title(f"Coeffs for models with Pearson's R >= {args.pearson_r_thres:.2f} and R2 >= {args.r2_score_thres}")
-    plt.savefig(f"{save_path}/{disease}.png", bbox_inches="tight", dpi=300)
+    # Get the coeffs for individual data folds
+    for model_run in model_runs:
+        alpha, l1_ratio = float(model_run.split("-")[0]), float(model_run.split("-")[1])
+        
+        # Retain the top inds for kfolds
+        inds = perf_df[(perf_df["model_run"] == model_run)].index
+        _plot(inds, coef_df, disease, save_path, f"{disease}_{model_run}_kfolds", num_coeffs, alpha, l1_ratio)
+
+        # Retain the top inds for full model
+        inds = full_model_df[(full_model_df["model_run"] == model_run)].index
+        _plot(inds, coef_df_full, disease, save_path, f"{disease}_{model_run}_full", num_coeffs, alpha, l1_ratio)
 
 
 def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
@@ -142,8 +154,9 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     # diseases = prot_df["Outcome"].unique().tolist()
 
     alphas, l1_ratios, scores, coeffs, models, conds, pearson_rs, train_inds = [], [], [], [], [], [], [], []
-    alphas_l = np.logspace(-3, 0, args.num_alphas)
+    alphas_l = np.logspace(-1, 0, args.num_alphas)
     l1_ratios_l = [.2, .5, .7, .9, .95, .99, 1]
+    # l1_ratios_l = [.95]
     num_ens = len(l1_ratios_l) * len(alphas_l)
 
     # Because here we run kfolds, it's important to do data normalization individually for each training fold
@@ -158,19 +171,24 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     if args.gene_weight_minmax: weight_col = "-log10(pval)_minmax"
     else: weight_col = "-log10(pval)"
 
+    kf = KFold(n_splits=args.num_folds, shuffle=True, random_state=42)
+    data_splits = list(kf.split(tmp))
+    # logging.error(data_splits)
+
     for alpha in alphas_l:
         for l1_ratio in l1_ratios_l:
 
+            logging.error(f"Working on alpha={alpha:.2f} l1_ratio={l1_ratio:.2f}")
             # For each set of params, run kfolds, then decide whether to keep this set of params
-            kf = KFold(n_splits=args.num_folds, shuffle=True)
             alphas_sub, l1_ratios_sub, scores_sub, coeffs_sub, models_sub, conds_sub, pearson_rs_sub = [], [], [], [], [], [], []
-            for i, (train_index, test_index) in enumerate(kf.split(tmp)):
-        
+            for i, (train_index, test_index) in enumerate(data_splits):
+
+                # logging.error("Hello!!")
                 tmp_train, hr_train = get_split_data(tmp, train_index, args.abs_hr)
                 tmp_test, hr_test = get_split_data(tmp, test_index, args.abs_hr)
         
-                X_train = tmp_train.copy().drop(columns=["HR", "P_value", weight_col, "-log10(pval)"])
-                X_test = tmp_test.copy().drop(columns=["HR", "P_value", weight_col, "-log10(pval)"])
+                X_train = tmp_train.copy().drop(columns=["HR", "P_value", "-log10(pval)_minmax", "-log10(pval)"])
+                X_test = tmp_test.copy().drop(columns=["HR", "P_value", "-log10(pval)_minmax", "-log10(pval)"])
 
                 # Normalize the data
                 obj = StandardScaler()
@@ -197,7 +215,6 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
                 pred = model.predict(X_test)
                 r, _ = pearsonr(hr_test, pred)
                 r = np.nan_to_num(r)
-                # if (r < args.pearson_r_thres) or score < args.r2_score_thres: continue
                 
                 alphas_sub.append(alpha)
                 scores_sub.append(score)
@@ -209,8 +226,6 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
                 train_inds.append(train_index)
     
             # Decide whether to keep this set of params
-            #if (np.median(scores_sub) < args.r2_score_thres) or (np.median(pearson_rs_sub) < args.pearson_r_thres): continue
-            #else:
             alphas.extend(alphas_sub)
             scores.extend(scores_sub)
             coeffs.extend(coeffs_sub)
@@ -221,16 +236,71 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
                 
     perf_df = pd.DataFrame({"disease": conds, "alpha": alphas, "l1_ratio": l1_ratios, "pearson_r": pearson_rs, "r2": scores})
     coef_np = np.array(coeffs)
+    logging.error(f"perf_df.shape: {perf_df.shape}")
+    logging.error(f"coef_np.shape: {coef_np.shape}")
+    logging.error(f"sub_atl.shape: {sub_atl.shape}")
+    logging.error(f"tmp.shape: {tmp.shape}")
     coef_df = pd.DataFrame(coef_np, columns=sub_atl.columns)
     coef_df["disease"] = conds
+
+    # Calculate the average performance across folds
+    perf_df["model_run"] = perf_df.apply(lambda x: f"{x['alpha']:.5f}-{x['l1_ratio']:.5f}", axis=1)
+    grouped_df = perf_df.groupby("model_run")[["r2", "pearson_r"]].mean().reset_index().rename(columns={"r2": "r2_mean", "pearson_r": "pearson_r_mean"})
+    perf_df = perf_df.merge(grouped_df, on="model_run", how="left")
+
+    # Found the set of params with the highest performance in pearson's R and R^2 respectively
+    top_r2_ind = perf_df["r2_mean"].idxmax()
+    top_pearson_ind = perf_df["pearson_r_mean"].idxmax()
+    top_r2_model = perf_df.loc[top_r2_ind, "model_run"]
+    top_pearson_model = perf_df.loc[top_pearson_ind, "model_run"]
+
+    # Process the full dataset for retraining the top models
+    hr = np.log(tmp["HR"])
+    if args.abs_hr: hr = np.abs(hr)
+    X_full = tmp.copy().drop(columns=["HR", "P_value", "-log10(pval)_minmax", "-log10(pval)"])
+    obj = StandardScaler()
+    X_full_trans = obj.fit_transform(X_full)
+
+    # Retrain the model using these 2 models on the full dataset
+    full_model_df, coeffs_full = [], []
+    for model_config in [top_r2_model, top_pearson_model]:
+        alpha, l1_ratio = float(model_config.split("-")[0]), float(model_config.split("-")[1])
+        model = ElasticNet(l1_ratio=l1_ratio, alpha=alpha, positive=args.positive, fit_intercept=args.intercept, max_iter=5000)
+
+        # Fit the model
+        if args.gene_weight: model.fit(X_full_trans, hr, sample_weight=tmp[weight_col].tolist())
+        else: model.fit(X_full_trans, hr)
+
+        # Calculate params
+        if args.gene_weight: score = model.score(X_full_trans, hr, sample_weight=tmp[weight_col].tolist())
+        else: score = model.score(X_full_trans, hr)
+        pred = model.predict(X_full_trans)
+        r, _ = pearsonr(hr, pred)
+        r = np.nan_to_num(r)
+
+        # Save results
+        full_model_df.append([args.disease, alpha, l1_ratio, r, score, model_config])
+        coeffs_full.append(model.coef_)
+
+    full_model_df = pd.DataFrame(full_model_df, columns=["disease", "alpha", "l1_ratio", "pearson_r", "r2", "model_run"])
+    coef_np_full = np.array(coeffs_full)
+    coef_df_full = pd.DataFrame(coef_np_full, columns=sub_atl.columns)
+    coef_df_full["disease"] = args.disease
 
     # Save stuff
     perf_df.to_csv(f"{args.save_path}/perf_df.tsv", sep="\t", index=False)
     coef_df.to_csv(f"{args.save_path}/coef_df.tsv", sep="\t", index=False)
+    full_model_df.to_csv(f"{args.save_path}/best_model_full_data.tsv", sep="\t", index=False)
+    coef_df_full.to_csv(f"{args.save_path}/coef_best_model_full_data.tsv", sep="\t", index=False)
     with open(f"{args.save_path}/train_indices.pkl", "wb") as f:
         pickle.dump(train_inds, f)
+    with open(f"{args.save_path}/best_model.txt", "w") as f:
+        f.write(f"Best model by r2 has alpha={perf_df.loc[top_r2_ind, 'alpha']:.3f}, l1_ratio={perf_df.loc[top_r2_ind, 'l1_ratio']:.3f}, \
+                with mean kfold r2={perf_df.loc[top_r2_ind, 'r2_mean']:.3f} and pearson_r={perf_df.loc[top_r2_ind, 'pearson_r_mean']:.3f}\n")
+        f.write(f"Best model by pearson's R has alpha={perf_df.loc[top_pearson_ind, 'alpha']:.3f}, l1_ratio={perf_df.loc[top_pearson_ind, 'l1_ratio']:.3f}, \
+                with mean kfold r2={perf_df.loc[top_pearson_ind, 'r2_mean']:.3f} and pearson_r={perf_df.loc[top_pearson_ind, 'pearson_r_mean']:.3f}")
     
-    return perf_df, coef_df, num_ens
+    return perf_df, coef_df, full_model_df, coef_df_full, num_ens
 
 
 def main(args):
@@ -247,6 +317,7 @@ def main(args):
 
     # Load in prot data
     prot_spec_final = load_prot_data(args.prot_data_path, args.disease, full_atlas)
+    prot_spec_final.to_csv(f"{args.save_path}/prot_spec_final.tsv", sep="\t", index=False)
 
     # Convert some argument values to bool
     args.abs_hr = args.abs_hr == 1
@@ -261,10 +332,10 @@ def main(args):
     # X_df = pd.DataFrame(X, columns=atlas_smal.columns, index=atlas_smal.index)
 
     # Train
-    perf_df, coef_df, num_ens = train(args, atlas_smal, prot_spec_final)
+    perf_df, coef_df, full_model_df, coef_df_full, num_ens = train(args, atlas_smal, prot_spec_final)
 
     # Make some plots
-    plot_top_coeff_ens(args, args.disease, coef_df, perf_df, args.save_path)
+    plot_top_coeff_ens(args, args.disease, coef_df, perf_df, coef_df_full, full_model_df, args.save_path)
     
 
 if __name__ == "__main__":
@@ -279,12 +350,10 @@ if __name__ == "__main__":
     parser.add_argument("--abs_hr", type=int, default=0, help="Whether to set HR to abs value")
     parser.add_argument("--pos_coef", type=int, default=0, help="Whether to only have positive coefficients in the model")
     parser.add_argument("--gene_weight", type=int, default=1, help="Whether to use -log10(pval) for gene weight")
-    parser.add_argument("--gene_weight_minmax", type=int, default=1, help="Whether to minmax gene weight")
+    parser.add_argument("--gene_weight_minmax", type=int, default=0, help="Whether to minmax gene weight")
     parser.add_argument("--intercept", type=int, default=0, help="Whether to have intercept in elasticnet")
     parser.add_argument("--num_alphas", type=int, default=100, help="Number of alphas for elasticnet")
     parser.add_argument("--num_folds", type=int, default=10, help="Number of k folds")
-    parser.add_argument("--pearson_r_thres", type=float, default=0.1, help="Minimum pearson r on val set")
-    parser.add_argument("--r2_score_thres", type=float, default=0.1, help="Minimum r2 score on val set")
 
     args = parser.parse_args()
     main(args)
