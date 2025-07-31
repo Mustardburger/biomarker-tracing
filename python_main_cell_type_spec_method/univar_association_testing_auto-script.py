@@ -4,7 +4,7 @@ import os, subprocess, argparse
 # python $proj_path/scripts/univar_association_testing_auto-script.py --atlas_path $proj_path/results/atlas_data/atlas_all_cell_tissues.tsv --save_path_suffix dep-var-z_mean-covar-F_z-trans --z_transform 1
 # proj_path="/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome"
 
-BASH_SCRIPT_DIR = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/bash_scripts/univar_association_testing.sh"
+BASH_SCRIPT_DIR = "bash_scripts/univar_association_testing.sh"
 PC_DF_PATH = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/results/atlas_data/PC_loadings_plasma_proteome_all_cell_tissues.tsv"
 
 

@@ -1,15 +1,6 @@
 import os, subprocess, argparse
 
-# Instruction to run
-# proj_path="/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome"
-
-# python /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/scripts/lasso_stability_analyses_auto-script.py --atlas_smal_path $proj_path/results/atlas_data/atlas_highly_var_genes_merged_corr-thres-0.8_graph-merged.tsv --atlas_path /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/atlas_data/analysis/tabula_sapiens/cell_tissue/specificity_metric/tabula_sapiens_pseudobulk_gene_exp_logcounts.tsv --save_path_suffix kneedle_with_atlas_corr-thres-0.8 --output_label HR
-
-# python /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/scripts/lasso_stability_analyses_auto-script.py --atlas_smal_path /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/results/atlas_smal_merged_graph-merged_with_cortical_cells.tsv --atlas_path /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/atlas_data/analysis/cortical_cell_atlas/cell_tissue/tabula_sapiens_cortical_cell_atlas_merged_pseudo_gene_exp_logcounts.tsv --save_path_suffix kneedle_with_cortical_cell_atlas
-
-# Run with alpha_list
-
-BASH_SCRIPT_DIR = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/bash_scripts/lasso_stability_analyses.sh"
+BASH_SCRIPT_DIR = "bash_scripts/lasso_stability_analyses.sh"
 DISEASE_PROT_DIR = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/plasma_proteome/data"
 
 

@@ -1,7 +1,7 @@
 import os, subprocess
 import argparse
 
-BASH_SCRIPT_DIR = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/bash_scripts/elasticnet_kfold_ver2.sh"
+BASH_SCRIPT_DIR = "bash_scripts/elasticnet_kfold_ver2.sh"
 DISEASE_PROT_DIR = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/plasma_proteome/data"
 
 # Example run:
