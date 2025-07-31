@@ -1,15 +1,24 @@
 import os, subprocess, argparse
 
-BASH_SCRIPT_DIR = "bash_scripts/lasso_stability_analyses.sh"
+# Instruction to run
+# proj_path="/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome"
+
+# python /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/scripts/lasso_stability_analyses_auto-script.py --atlas_smal_path $proj_path/results/atlas_data/atlas_highly_var_genes_merged_corr-thres-0.8_graph-merged.tsv --atlas_path /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/atlas_data/analysis/tabula_sapiens/cell_tissue/specificity_metric/tabula_sapiens_pseudobulk_gene_exp_logcounts.tsv --save_path_suffix kneedle_with_atlas_corr-thres-0.8 --output_label HR
+
+# python /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/scripts/lasso_stability_analyses_auto-script.py --atlas_smal_path /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/results/atlas_smal_merged_graph-merged_with_cortical_cells.tsv --atlas_path /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/atlas_data/analysis/cortical_cell_atlas/cell_tissue/tabula_sapiens_cortical_cell_atlas_merged_pseudo_gene_exp_logcounts.tsv --save_path_suffix kneedle_with_cortical_cell_atlas
+
+# Run with alpha_list
+
+BASH_SCRIPT_DIR = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/bash_scripts/lasso_stability_analyses.sh"
 DISEASE_PROT_DIR = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/plasma_proteome/data"
 
 
 def main(in_args):
 
-    base_path = f"{in_args.disease_prot_dir}/{in_args.dis_type}_popu-{in_args.popu_type}"
+    base_path = f"{in_args.disease_prot_dir}/{in_args.disease_type}_popu-{in_args.popu_type}"
     diseases = os.listdir(base_path)
     if in_args.save_path_suffix != "": in_args.save_path_suffix = f"_{in_args.save_path_suffix}"
-    save_path = f"{in_args.save_path}/{in_args.dis_type}_popu-{in_args.popu_type}/elastic_kfold_ver2{in_args.save_path_suffix}"
+    save_path = f"{in_args.save_path}/{in_args.disease_type}_popu-{in_args.popu_type}/lasso_stability_analyses{in_args.save_path_suffix}"
     lsf_params = ["-J", "atlas", "-P", "acc_DiseaseGeneCell", "-n", "1", "-W", "1:30", "-R", "rusage[mem=2000]", "-M", "20000", "-L", "/bin/bash"]
 
     for disease in sorted(diseases):
@@ -25,7 +34,7 @@ def main(in_args):
 
         args = [
             in_args.atlas_path, in_args.atlas_smal_path, base_path, save_full_path, dis_name, in_args.output_label,
-            in_args.num_alphas, in_args.subset_size, in_args.gene_weight, in_args.num_iter, in_args.samp_method, in_args.optim_alpha_mode
+            str(in_args.num_alphas), str(in_args.subset_size), str(in_args.gene_weight), str(in_args.num_iter), in_args.samp_method, in_args.optim_alpha_mode
         ]
         command = ["bsub"] + lsf_params + ["-oo", f"{log_path}/{disease}.stdout", "-eo", f"{log_path}/{disease}.stderr"] + ["bash", BASH_SCRIPT_DIR] + args
         

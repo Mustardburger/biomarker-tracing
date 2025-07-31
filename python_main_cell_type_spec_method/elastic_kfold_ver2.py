@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import ElasticNet
 from scipy.stats import pearsonr, spearmanr
@@ -153,7 +153,7 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     # Some evidence that this might work. Let's build this pipeline for all diseases
     # diseases = prot_df["Outcome"].unique().tolist()
 
-    alphas, l1_ratios, scores, coeffs, models, conds, pearson_rs, train_inds = [], [], [], [], [], [], [], []
+    alphas, l1_ratios, scores, coeffs, models, conds, pearson_rs, mses, train_inds = [], [], [], [], [], [], [], [], []
     alphas_l = np.logspace(-1, 0, args.num_alphas)
     l1_ratios_l = [.2, .5, .7, .9, .95, .99, 1]
     # l1_ratios_l = [.95]
@@ -180,7 +180,7 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
 
             logging.error(f"Working on alpha={alpha:.2f} l1_ratio={l1_ratio:.2f}")
             # For each set of params, run kfolds, then decide whether to keep this set of params
-            alphas_sub, l1_ratios_sub, scores_sub, coeffs_sub, models_sub, conds_sub, pearson_rs_sub = [], [], [], [], [], [], []
+            alphas_sub, l1_ratios_sub, scores_sub, coeffs_sub, models_sub, conds_sub, pearson_rs_sub, mses_sub = [], [], [], [], [], [], [], []
             for i, (train_index, test_index) in enumerate(data_splits):
 
                 # logging.error("Hello!!")
@@ -215,6 +215,7 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
                 pred = model.predict(X_test)
                 r, _ = pearsonr(hr_test, pred)
                 r = np.nan_to_num(r)
+                mse = mean_squared_error(hr_test, pred)
                 
                 alphas_sub.append(alpha)
                 scores_sub.append(score)
@@ -223,6 +224,7 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
                 conds_sub.append(args.disease)
                 models_sub.append(model)
                 pearson_rs_sub.append(r)
+                mses_sub.append(mse)
                 train_inds.append(train_index)
     
             # Decide whether to keep this set of params
@@ -233,8 +235,9 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
             conds.extend(conds_sub)
             models.extend(models_sub)
             pearson_rs.extend(pearson_rs_sub)
+            mses.extend(mses_sub)
                 
-    perf_df = pd.DataFrame({"disease": conds, "alpha": alphas, "l1_ratio": l1_ratios, "pearson_r": pearson_rs, "r2": scores})
+    perf_df = pd.DataFrame({"disease": conds, "alpha": alphas, "l1_ratio": l1_ratios, "pearson_r": pearson_rs, "mse": mses, "r2": scores})
     coef_np = np.array(coeffs)
     logging.error(f"perf_df.shape: {perf_df.shape}")
     logging.error(f"coef_np.shape: {coef_np.shape}")
@@ -245,14 +248,16 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
 
     # Calculate the average performance across folds
     perf_df["model_run"] = perf_df.apply(lambda x: f"{x['alpha']:.5f}-{x['l1_ratio']:.5f}", axis=1)
-    grouped_df = perf_df.groupby("model_run")[["r2", "pearson_r"]].mean().reset_index().rename(columns={"r2": "r2_mean", "pearson_r": "pearson_r_mean"})
+    grouped_df = perf_df.groupby("model_run")[["r2", "pearson_r", "mse"]].mean().reset_index().rename(columns={"r2": "r2_mean", "pearson_r": "pearson_r_mean", "mse": "mse_mean"})
     perf_df = perf_df.merge(grouped_df, on="model_run", how="left")
 
     # Found the set of params with the highest performance in pearson's R and R^2 respectively
     top_r2_ind = perf_df["r2_mean"].idxmax()
     top_pearson_ind = perf_df["pearson_r_mean"].idxmax()
+    top_mse_ind = perf_df["mse_mean"].idxmin()
     top_r2_model = perf_df.loc[top_r2_ind, "model_run"]
     top_pearson_model = perf_df.loc[top_pearson_ind, "model_run"]
+    top_mse_model = perf_df.loc[top_mse_ind, "model_run"]
 
     # Process the full dataset for retraining the top models
     hr = np.log(tmp["HR"])
@@ -263,7 +268,7 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
 
     # Retrain the model using these 2 models on the full dataset
     full_model_df, coeffs_full = [], []
-    for model_config in [top_r2_model, top_pearson_model]:
+    for model_config in [top_r2_model, top_pearson_model, top_mse_model]:
         alpha, l1_ratio = float(model_config.split("-")[0]), float(model_config.split("-")[1])
         model = ElasticNet(l1_ratio=l1_ratio, alpha=alpha, positive=args.positive, fit_intercept=args.intercept, max_iter=5000)
 
@@ -277,12 +282,13 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
         pred = model.predict(X_full_trans)
         r, _ = pearsonr(hr, pred)
         r = np.nan_to_num(r)
+        mse = mean_squared_error(hr, pred)
 
         # Save results
-        full_model_df.append([args.disease, alpha, l1_ratio, r, score, model_config])
+        full_model_df.append([args.disease, alpha, l1_ratio, r, score, mse, model_config])
         coeffs_full.append(model.coef_)
 
-    full_model_df = pd.DataFrame(full_model_df, columns=["disease", "alpha", "l1_ratio", "pearson_r", "r2", "model_run"])
+    full_model_df = pd.DataFrame(full_model_df, columns=["disease", "alpha", "l1_ratio", "pearson_r", "r2", "mse", "model_run"])
     coef_np_full = np.array(coeffs_full)
     coef_df_full = pd.DataFrame(coef_np_full, columns=sub_atl.columns)
     coef_df_full["disease"] = args.disease
@@ -295,10 +301,12 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     with open(f"{args.save_path}/train_indices.pkl", "wb") as f:
         pickle.dump(train_inds, f)
     with open(f"{args.save_path}/best_model.txt", "w") as f:
-        f.write(f"Best model by r2 has alpha={perf_df.loc[top_r2_ind, 'alpha']:.3f}, l1_ratio={perf_df.loc[top_r2_ind, 'l1_ratio']:.3f}, \
-                with mean kfold r2={perf_df.loc[top_r2_ind, 'r2_mean']:.3f} and pearson_r={perf_df.loc[top_r2_ind, 'pearson_r_mean']:.3f}\n")
+        f.write(f"Best model by r2 has alpha={perf_df.loc[top_r2_ind, 'alpha']:.3f}, l1_ratio={perf_df.loc[top_r2_ind, 'l1_ratio']:.3f} \
+                with mean kfold r2={perf_df.loc[top_r2_ind, 'r2_mean']:.3f}, pearson_r={perf_df.loc[top_r2_ind, 'pearson_r_mean']:.3f}, mse={perf_df.loc[top_r2_ind, 'mse_mean']:.3f} \n")
         f.write(f"Best model by pearson's R has alpha={perf_df.loc[top_pearson_ind, 'alpha']:.3f}, l1_ratio={perf_df.loc[top_pearson_ind, 'l1_ratio']:.3f}, \
-                with mean kfold r2={perf_df.loc[top_pearson_ind, 'r2_mean']:.3f} and pearson_r={perf_df.loc[top_pearson_ind, 'pearson_r_mean']:.3f}")
+                with mean kfold r2={perf_df.loc[top_pearson_ind, 'r2_mean']:.3f}, pearson_r={perf_df.loc[top_pearson_ind, 'pearson_r_mean']:.3f}, , mse={perf_df.loc[top_pearson_ind, 'mse_mean']:.3f} \n")
+        f.write(f"Best model by MSE has alpha={perf_df.loc[top_mse_ind, 'alpha']:.3f}, l1_ratio={perf_df.loc[top_mse_ind, 'l1_ratio']:.3f}, \
+                with mean kfold r2={perf_df.loc[top_mse_ind, 'r2_mean']:.3f}, pearson_r={perf_df.loc[top_mse_ind, 'pearson_r_mean']:.3f}, , mse={perf_df.loc[top_mse_ind, 'mse_mean']:.3f} \n")
     
     return perf_df, coef_df, full_model_df, coef_df_full, num_ens
 
