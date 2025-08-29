@@ -13,6 +13,7 @@ from sklearn.ensemble import RandomForestRegressor
 from scipy.stats import pearsonr, spearmanr
 from scipy.optimize import curve_fit
 from sklearn.model_selection import KFold
+from sklearn.inspection import permutation_importance
 
 warnings.simplefilter("ignore", RuntimeWarning)
 
@@ -102,6 +103,77 @@ def load_prot_data(base_path: str, disease: str, atlas: pd.DataFrame):
     return prot_spec_final
 
 
+def permute_importance(args, prot_spec_final: pd.DataFrame, atlas_smal: pd.DataFrame):
+    """
+    Calculate permutation importance of features as a negative control
+    """
+    # Transform the data
+    X_df = atlas_smal.copy()
+
+    sub_atl = X_df.loc[prot_spec_final["gene"].tolist(), :]
+    tmp = sub_atl.merge(prot_spec_final[[OUTPUT_LABEL, "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
+    tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
+    max_non_inf = tmp.loc[tmp["-log10(pval)"] != np.inf, "-log10(pval)"].max()
+    tmp = tmp.replace([np.inf, -np.inf], max_non_inf)
+    tmp["-log10(pval)_minmax"] = (tmp["-log10(pval)"] - tmp["-log10(pval)"].min()) / (tmp["-log10(pval)"].max() - tmp["-log10(pval)"].min())
+    hr = tmp[OUTPUT_LABEL]
+    hr = np.log(hr)
+    if args.abs_hr: hr = np.abs(hr)
+    sub_atl = sub_atl.loc[tmp.index, :]
+    feature_names = sub_atl.columns.tolist()
+
+    # Split the data k-fold
+    kf = KFold(n_splits=args.kfold_n, shuffle=True, random_state=42)
+    df_l = []
+
+    with open(f"{args.save_path}/model_perf.txt", "a") as f:
+        f.write("\n")
+
+        for i, (train_index, test_index) in enumerate(kf.split(sub_atl)):
+
+            obj = StandardScaler()
+            X_train, y_train = sub_atl.iloc[train_index], hr.iloc[train_index]
+            X_test, y_test = sub_atl.iloc[test_index], hr.iloc[test_index]
+            obj.fit(X_train)
+            X_train, X_test = obj.transform(X_train), obj.transform(X_test) 
+
+            # Train the model on the train folds
+            model = RandomForestRegressor(
+                n_estimators=args.num_trees, min_samples_split=args.min_samples_split, min_samples_leaf=args.min_samples_leaf,
+                max_samples=args.max_samples, n_jobs=-1
+            )
+            model.fit(sub_atl, hr)
+                
+            train_score = model.score(X_train, y_train)
+            test_score = model.score(X_test, y_test)
+            f.write(f"Train score without sample weights: {train_score:.3f}, test score without sample weights: {test_score:.3f}\n")
+
+            # Validate the model
+            r = permutation_importance(
+                model, X_test, y_test,
+                n_repeats=args.n_permute_repeat, random_state=0)
+            permute_scores = r.importances   # shape = (n_features, n_repeats)
+
+            # Store results
+            df = pd.DataFrame({
+                "cell_tissue": feature_names*args.n_permute_repeat, 
+                "score": permute_scores.flatten(order="F"),
+                "fold": [i]*permute_scores.size
+            })
+            df_l.append(df)
+
+    # Save results
+    final_df = pd.concat(df_l)
+    final_df.to_csv(f"{args.save_path}/permute_importance_scores.tsv", sep="\t", index=False)
+
+    # Make plots
+    plt.figure(figsize=(9, 20))
+    sns.boxplot(data=final_df, x="score", y="cell_tissue", hue="fold")
+    plt.axvline(0.0, color='black', linestyle='--')
+    plt.title(f"Permutscores at kfold={args.kfold_n}, repeats={args.n_permute_repeat}")
+    plt.savefig(f"{args.save_path}/permute_importance_scores.png", bbox_inches="tight", dpi=300)
+
+
 def random_forests(args, prot_spec_final: pd.DataFrame, atlas_smal_merged: pd.DataFrame):
     """
     Run random forests
@@ -124,13 +196,16 @@ def random_forests(args, prot_spec_final: pd.DataFrame, atlas_smal_merged: pd.Da
     # Random forest
     model = RandomForestRegressor(
         n_estimators=args.num_trees, min_samples_split=args.min_samples_split, min_samples_leaf=args.min_samples_leaf,
-        max_samples=args.max_samples, n_jobs=-1
+        max_samples=args.max_samples, n_jobs=-1, oob_score=True
     )
     model.fit(sub_atl, hr)
 
+    with open(f"{args.save_path}/model_perf.txt", "w") as f:
+        f.write(f"OOB score measured in R2 is: {model.oob_score_:.3f}")
+
     # Save results
     scores = model.feature_importances_  # one-dimensional numpy array
-    coef_tree_df = pd.DataFrame({"tree_feature_importance": scores, "cell_tissue": sub_atl.columns})
+    coef_tree_df = pd.DataFrame({"tree_feature_importance": scores, "cell_tissue": sub_atl.columns}).sort_values(by="tree_feature_importance", ascending=False)
     coef_tree_df.to_csv(f"{args.save_path}/coef_random_forest.tsv", sep="\t", index=False)
     with open(f"{args.save_path}/random_forest_model.pkl", "wb") as f:
         pickle.dump(model, f) 
@@ -148,6 +223,7 @@ def main(args):
 
     # Load in the atlas data
     full_atlas = pd.read_csv(args.atlas_path, sep="\t")
+    if "gene" in full_atlas.columns: full_atlas = full_atlas.set_index("gene")
     atlas_smal = pd.read_csv(args.atlas_smal_path, sep="\t").set_index("gene")
 
     # Load in prot data
@@ -158,8 +234,11 @@ def main(args):
     args.abs_hr = args.abs_hr == 1
 
     # Train
-    random_forests(args, prot_spec_final, atlas_smal)  
-    
+    random_forests(args, prot_spec_final, atlas_smal)
+
+    # Run permutation importance for random forests (more reliable than impurity-based feature importances)
+    permute_importance(args, prot_spec_final, atlas_smal)
+
 
 if __name__ == "__main__":
 
@@ -176,6 +255,9 @@ if __name__ == "__main__":
     parser.add_argument("--min_samples_split", type=int, default=10, help="Minimum size of a node before getting split")
     parser.add_argument("--min_samples_leaf", type=int, default=2, help="Minimum size of a leaf")
     parser.add_argument("--max_samples", type=float, default=1.0, help="Fraction of dataset for bootstrapping")
+
+    parser.add_argument("--kfold_n", type=int, default=5, help="Number of k for kfolds")
+    parser.add_argument("--n_permute_repeat", type=int, default=30, help="Number of n permutations")
 
     args = parser.parse_args()
     main(args)

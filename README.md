@@ -1,3 +1,6 @@
+# Package installation
+The packages used to run the code is stored at `packages.yml`. One way to install these packages is `conda env create -f packages.yml`.
+
 # Data preparation
 ## Atlas data
 * The downloaded atlas datasets are found at `/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/atlas_data/data`.
@@ -15,8 +18,7 @@
 * All relevant code in `python_main_cell_type_spec_method`.
 * Run the `auto-script` version of the .py code that accepts relevant input arguments. Other arguments can be found in the relavant bash files in the `bash_scripts` folder.
 
-* 5 versions of code:
-    * `elastic_full_dataset`: Run 1000 ElasticNets of various hyperparameters on the full dataset, and obtain cell-tissue coefficients (old, no longer included in this repo).
+* 4 versions of code:
     * `elastic_kfold_ver2`: Run ElasticNet using k-fold cross-validation, find the best performing model, and obtain cell-tissue coefficients.
     * `lasso_stability_analyses`: Run a custom-made algorithm to find a suitable lambda value for LASSO, then run LASSO stability analysis across 2000 subsamples of the original dataset, then obtain the most stable cell-tissues.
     * `tree_based_methods`: Run random forests and obtain cell-tissue importance scores.

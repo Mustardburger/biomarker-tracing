@@ -10,10 +10,10 @@ DISEASE_PROT_DIR = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResN
 
 def main(in_args):
 
-    base_path = f"{in_args.disease_prot_dir}/{in_args.dis_type}_popu-{in_args.popu_type}"
+    base_path = f"{in_args.disease_prot_dir}/{in_args.disease_type}_popu-{in_args.popu_type}"
     diseases = os.listdir(base_path)
     if in_args.save_path_suffix != "": in_args.save_path_suffix = f"_{in_args.save_path_suffix}"
-    save_path = f"{in_args.save_path}/{in_args.dis_type}_popu-{in_args.popu_type}/elastic_kfold_ver2{in_args.save_path_suffix}"
+    save_path = f"{in_args.save_path}/{in_args.disease_type}_popu-{in_args.popu_type}/tree_based_methods_random_forest{in_args.save_path_suffix}"
     lsf_params = ["-J", "atlas", "-P", "acc_DiseaseGeneCell", "-n", "1", "-W", "1:30", "-R", "rusage[mem=2000]", "-M", "20000", "-L", "/bin/bash"]
 
     for disease in sorted(diseases):
@@ -26,10 +26,12 @@ def main(in_args):
         save_full_path = os.path.join(save_path, dis_name)
         os.makedirs(save_path, exist_ok=True)
         log_path = save_full_path
+        # log_path = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/logs/"
 
         args = [
             in_args.atlas_path, in_args.atlas_smal_path, base_path, save_full_path, dis_name, in_args.output_label,
-            in_args.num_trees, in_args.min_samples_split, in_args.min_samples_leaf, in_args.max_samples
+            str(in_args.num_trees), str(in_args.min_samples_split), str(in_args.min_samples_leaf), str(in_args.max_samples),
+            str(in_args.kfold_n), str(in_args.n_permute_repeat)
         ]
         command = ["bsub"] + lsf_params + ["-oo", f"{log_path}/{disease}.stdout", "-eo", f"{log_path}/{disease}.stderr"] + ["bash", BASH_SCRIPT_DIR] + args
         
@@ -60,6 +62,9 @@ if __name__ == "__main__":
     parser.add_argument("--min_samples_split", required=False, type=int, default=10)
     parser.add_argument("--min_samples_leaf", required=False, type=int, default=2)
     parser.add_argument("--max_samples", required=False, type=float, default=0.7)
+
+    parser.add_argument("--kfold_n", type=int, default=5, help="Number of k for kfolds")
+    parser.add_argument("--n_permute_repeat", type=int, default=30, help="Number of n permutations")
 
     args = parser.parse_args()
     main(args)
