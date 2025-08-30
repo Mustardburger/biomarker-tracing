@@ -5,6 +5,7 @@ import os, argparse, pickle
 import warnings, json, logging
 import matplotlib.pyplot as plt
 import seaborn as sns
+import scipy.stats as stats
 
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.metrics import r2_score, mean_squared_error
@@ -20,9 +21,9 @@ GENE_ID_HGNC = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwo
 
 
 # A function to clean some code
-def get_split_data(df, inds, abs_hr=False):
+def get_split_data(df, inds, output_label, abs_hr=False):
     X_train = df.iloc[inds, :]
-    hr = np.log(X_train["HR"])
+    hr = X_train[output_label]
     if abs_hr: hr = np.abs(hr)
     return X_train, hr
 
@@ -84,7 +85,12 @@ def load_prot_data(base_path: str, disease: str, atlas: pd.DataFrame):
     # Load in prot data
     prot_df = pd.read_csv(f"{os.path.join(base_path, disease)}.csv")
     prot_df = prot_df.rename(columns={"Protein": "gene_name"})
-    prot_df["HR"] = prot_df["HR[95%CI]"].apply(lambda x: float(x.split(" ")[0]))
+
+    risk = "HR[95%CI]"
+    if risk not in prot_df.columns: risk = "OR[95%CI]"
+    risk_sm = risk.split("[")[0]
+    prot_df[risk_sm] = prot_df[risk].apply(lambda x: float(x.split(" ")[0]))
+    prot_df[f"log{risk_sm}"] = np.log(prot_df[risk_sm])
 
     # prot_spec_id contains some genes with duplicate gene ID
     prot_spec_id = pd.merge(left=prot_df, right=gene_names, on="gene_name", how="left")
@@ -154,20 +160,25 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     # diseases = prot_df["Outcome"].unique().tolist()
 
     alphas, l1_ratios, scores, coeffs, models, conds, pearson_rs, mses, train_inds = [], [], [], [], [], [], [], [], []
-    alphas_l = np.logspace(-1, 0, args.num_alphas)
-    l1_ratios_l = [.2, .5, .7, .9, .95, .99, 1]
-    # l1_ratios_l = [.95]
+    alphas_l = np.logspace(-3, 0, args.num_alphas)
+    # l1_ratios_l = [.2, .5, .7, .9, .95, .99, 1]
+    l1_ratios_l = [0.001, 0.005, 0.01, 0.05, 0.1, 0.15, .2, .7, .9, 1]
     num_ens = len(l1_ratios_l) * len(alphas_l)
 
     # Because here we run kfolds, it's important to do data normalization individually for each training fold
     X_df = atlas_smal_merged.copy()
 
+    col = "HR"
+    if col not in prot_spec_final.columns: col = "OR"
+
     sub_atl = X_df.loc[prot_spec_final["gene"].tolist(), :]
-    tmp = sub_atl.merge(prot_spec_final[["HR", "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
+    tmp = sub_atl.merge(prot_spec_final[[col, f"log{col}", "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
     tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
+    tmp["z_score"] = (2*(tmp[col] > 1) - 1) * tmp["P_value"].apply(lambda x: stats.norm.isf(x / 2))
     max_non_inf = tmp.loc[tmp["-log10(pval)"] != np.inf, "-log10(pval)"].max()
     tmp = tmp.replace([np.inf, -np.inf], max_non_inf)
     tmp["-log10(pval)_minmax"] = (tmp["-log10(pval)"] - tmp["-log10(pval)"].min()) / (tmp["-log10(pval)"].max() - tmp["-log10(pval)"].min())
+
     if args.gene_weight_minmax: weight_col = "-log10(pval)_minmax"
     else: weight_col = "-log10(pval)"
 
@@ -184,11 +195,11 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
             for i, (train_index, test_index) in enumerate(data_splits):
 
                 # logging.error("Hello!!")
-                tmp_train, hr_train = get_split_data(tmp, train_index, args.abs_hr)
-                tmp_test, hr_test = get_split_data(tmp, test_index, args.abs_hr)
+                tmp_train, hr_train = get_split_data(tmp, train_index, args.output_label, args.abs_hr)
+                tmp_test, hr_test = get_split_data(tmp, test_index, args.output_label, args.abs_hr)
         
-                X_train = tmp_train.copy().drop(columns=["HR", "P_value", "-log10(pval)_minmax", "-log10(pval)"])
-                X_test = tmp_test.copy().drop(columns=["HR", "P_value", "-log10(pval)_minmax", "-log10(pval)"])
+                X_train = tmp_train.copy().drop(columns=[col, f"log{col}", "z_score", "P_value", "-log10(pval)_minmax", "-log10(pval)"])
+                X_test = tmp_test.copy().drop(columns=[col, f"log{col}", "z_score", "P_value", "-log10(pval)_minmax", "-log10(pval)"])
 
                 # Normalize the data
                 obj = StandardScaler()
@@ -260,9 +271,9 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     top_mse_model = perf_df.loc[top_mse_ind, "model_run"]
 
     # Process the full dataset for retraining the top models
-    hr = np.log(tmp["HR"])
+    hr = tmp[args.output_label]
     if args.abs_hr: hr = np.abs(hr)
-    X_full = tmp.copy().drop(columns=["HR", "P_value", "-log10(pval)_minmax", "-log10(pval)"])
+    X_full = tmp.copy().drop(columns=[col, f"log{col}", "z_score", "P_value", "-log10(pval)_minmax", "-log10(pval)"])
     obj = StandardScaler()
     X_full_trans = obj.fit_transform(X_full)
 
@@ -321,6 +332,7 @@ def main(args):
 
     # Load in the atlas data
     full_atlas = pd.read_csv(args.atlas_path, sep="\t")
+    if "gene" in full_atlas.columns: full_atlas = full_atlas.set_index("gene")
     atlas_smal = pd.read_csv(args.atlas_smal_path, sep="\t").set_index("gene")
 
     # Load in prot data
@@ -354,6 +366,7 @@ if __name__ == "__main__":
     parser.add_argument("--prot_data_path", type=str, help="Prot path")
     parser.add_argument("--save_path", type=str)
     parser.add_argument("--disease", type=str)
+    parser.add_argument("--output_label", type=str, default="HR")
 
     parser.add_argument("--abs_hr", type=int, default=0, help="Whether to set HR to abs value")
     parser.add_argument("--pos_coef", type=int, default=0, help="Whether to only have positive coefficients in the model")

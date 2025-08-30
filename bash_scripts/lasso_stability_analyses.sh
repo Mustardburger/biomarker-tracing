@@ -5,7 +5,7 @@ module load anaconda3/latest
 source activate scanpy-env
 
 # Get the names of params
-script_dir="/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/scripts/lasso_stability_analyses.py"
+script_dir="python_main_cell_type_spec_method/lasso_stability_analyses.py"
 atlas_path=$1
 atlas_smal_path=$2
 prot_data_path=$3

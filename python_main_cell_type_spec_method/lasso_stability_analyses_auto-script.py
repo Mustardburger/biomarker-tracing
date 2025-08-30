@@ -31,6 +31,7 @@ def main(in_args):
         
         if dis_name == in_args.disease_name:
             subprocess.run(command)
+            print(save_full_path)
             break
         elif in_args.disease_name == "":
             subprocess.run(command)

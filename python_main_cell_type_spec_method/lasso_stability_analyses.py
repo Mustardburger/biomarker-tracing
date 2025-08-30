@@ -5,9 +5,10 @@ import os, argparse, kneed, pickle, logging
 import warnings, json, logging
 import matplotlib.pyplot as plt
 import seaborn as sns
+import scipy.stats as stats
 
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import ElasticNet
 from scipy.stats import pearsonr, spearmanr
@@ -19,52 +20,13 @@ warnings.simplefilter("ignore", RuntimeWarning)
 
 GENE_ID_SYMBOLS = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/Alzheimer/CSF_proteomics_AD_onset/gene_id_symbol_df.tsv"
 GENE_ID_HGNC = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/Alzheimer/CSF_proteomics_AD_onset/gene_id_symbol_hgnc.tsv"
-OUTPUT_LABEL = "HR"
-
 
 # A function to clean some code
-def get_split_data(df, inds, abs_hr=False):
+def get_split_data(df, inds, output_label, abs_hr=False):
     X_train = df.iloc[inds, :]
-    hr = np.log(X_train[OUTPUT_LABEL])
+    hr = X_train[output_label]
     if abs_hr: hr = np.abs(hr)
     return X_train, hr
-
-
-# Using piecewise function to find optimal alpha
-def optim_alpha_piecewise(args, perf_df: pd.DataFrame):
-    def piecewise_linear(x, x0, y0, k1, k2):
-        return np.piecewise(x, [x < x0], 
-                            [lambda x: k1 * x + y0 - k1 * x0, 
-                            lambda x: k2 * x + y0 - k2 * x0])
-
-    # Assuming you have your data in x and y arrays
-    x = perf_df['zero_coef_perc'].values
-    y = perf_df['r2'].values
-
-    # Initial guess for parameters
-    p0 = [0.67, -0.2, -0.2, -0.8]  # [x0, y0, k1, k2]
-
-    # Fit the piecewise linear model
-    params, _ = curve_fit(piecewise_linear, x, y, p0=p0)
-    x0, y0, k1, k2 = params
-
-    # Save the plot that finds the knee point
-    plt.figure(figsize=(10, 6))
-    plt.scatter(x, y)
-    plt.plot(np.sort(x), piecewise_linear(np.sort(x), *params), 'r-', linewidth=2)
-    plt.axvline(x=x0, color='g', linestyle='--', label=f'Change point at {x0:.3f}')
-    plt.xlabel('zero_coef_perc')
-    plt.ylabel('r2')
-    plt.title(f"Change point: (x,y)=({x0:.2f},{y0:.2f}), Slopes: {k1:.3f} and {k2:.3f}")
-    plt.legend()
-    plt.grid(True)
-    plt.savefig(f"{args.save_path}/piecewise_alpha.png", dpi=300, bbox_inches="tight")
-
-    # Calculate the params at the knee points
-    perf_df_ranked = perf_df[(perf_df["zero_coef_perc"] >= x0-0.01) & (perf_df["zero_coef_perc"] <= x0+0.01)].sort_values(by="r2", ascending=False)
-    optim_alpha = perf_df_ranked.head(1)["alpha"].item()
-    optim_l1_ratio = perf_df_ranked.head(1)["l1_ratio"].item()
-    return optim_alpha, optim_l1_ratio
 
 
 # Using kneedle to find optimal alpha
@@ -132,7 +94,12 @@ def load_prot_data(base_path: str, disease: str, atlas: pd.DataFrame):
     # Load in prot data
     prot_df = pd.read_csv(f"{os.path.join(base_path, disease)}.csv")
     prot_df = prot_df.rename(columns={"Protein": "gene_name"})
-    prot_df[OUTPUT_LABEL] = prot_df[f"{OUTPUT_LABEL}[95%CI]"].astype(str).apply(lambda x: float(x.split(" ")[0]))
+
+    risk = "HR[95%CI]"
+    if risk not in prot_df.columns: risk = "OR[95%CI]"
+    risk_sm = risk.split("[")[0]
+    prot_df[risk_sm] = prot_df[risk].apply(lambda x: float(x.split(" ")[0]))
+    prot_df[f"log{risk_sm}"] = np.log(prot_df[risk_sm])
 
     # prot_spec_id contains some genes with duplicate gene ID
     prot_spec_id = pd.merge(left=prot_df, right=gene_names, on="gene_name", how="left")
@@ -181,7 +148,7 @@ def hyperparam_search(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd
     # diseases = prot_df["Outcome"].unique().tolist()
 
     alphas, l1_ratios, scores, coeffs, models, conds, pearson_rs = [], [], [], [], [], [], []
-    alphas_l = np.logspace(-2, 0, args.num_alphas)
+    alphas_l = np.logspace(-1, 0, args.num_alphas)
     l1_ratios_l = [1.0]
 
     obj = StandardScaler()
@@ -189,13 +156,13 @@ def hyperparam_search(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd
     X_df = pd.DataFrame(X, columns=atlas_smal_merged.columns, index=atlas_smal_merged.index)
 
     sub_atl = X_df.loc[prot_spec_final["gene"].tolist(), :]
-    tmp = sub_atl.merge(prot_spec_final[[OUTPUT_LABEL, "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
+    tmp = sub_atl.merge(prot_spec_final[[col, "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
     tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
+    tmp["z_score"] = (2*(tmp[col] > 1) - 1) * tmp["P_value"].apply(lambda x: stats.norm.isf(x / 2))
     max_non_inf = tmp.loc[tmp["-log10(pval)"] != np.inf, "-log10(pval)"].max()
     tmp = tmp.replace([np.inf, -np.inf], max_non_inf)
     tmp["-log10(pval)_minmax"] = (tmp["-log10(pval)"] - tmp["-log10(pval)"].min()) / (tmp["-log10(pval)"].max() - tmp["-log10(pval)"].min())
-    hr = tmp[OUTPUT_LABEL]
-    hr = np.log(hr)
+    hr = tmp[args.output_label]
     if args.abs_hr: hr = np.abs(hr)
     sub_atl = sub_atl.loc[tmp.index, :]
 
@@ -241,11 +208,9 @@ def hyperparam_search(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd
     coef_df["disease"] = conds
     perf_df["zero_coef_perc"] = np.sum(coef_df.to_numpy() == 0, axis=1) / coef_df.shape[1]
 
-    ### Calculate the alpha value where the r2 score significantly dropped (2 modes: piecewise function and knee points)
+    ### Calculate the alpha value where the r2 score significantly dropped
     logging.error("Finding optimal hyperparams...")
-    if args.optim_alpha_mode == "piecewise":
-        optim_alpha, optim_l1_ratio = optim_alpha_piecewise(args, perf_df)
-    elif args.optim_alpha_mode == "kneedle":
+    if args.optim_alpha_mode == "kneedle":
         optim_alpha, optim_l1_ratio = optim_alpha_kneedle(args, perf_df)
 
     ### Save stuff
@@ -253,6 +218,117 @@ def hyperparam_search(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd
     coef_df.to_csv(f"{args.save_path}/coef_df.tsv", sep="\t", index=False)
     
     return perf_df, coef_df, optim_alpha, optim_l1_ratio
+
+
+def hyperparam_search_kfold(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
+
+    alphas, l1_ratios, scores, coeffs, models, conds, pearson_rs, mses, train_inds = [], [], [], [], [], [], [], [], []
+    alphas_l = np.logspace(-3, 0, args.num_alphas)
+    l1_ratio = 1.0
+
+    # Because here we run kfolds, it's important to do data normalization individually for each training fold
+    X_df = atlas_smal_merged.copy()
+    col = "HR"
+    if col not in prot_spec_final.columns: col = "OR"
+
+    sub_atl = X_df.loc[prot_spec_final["gene"].tolist(), :]
+    tmp = sub_atl.merge(prot_spec_final[[col, f"log{col}", "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
+    tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
+    tmp["z_score"] = (2*(tmp[col] > 1) - 1) * tmp["P_value"].apply(lambda x: stats.norm.isf(x / 2))
+    max_non_inf = tmp.loc[tmp["-log10(pval)"] != np.inf, "-log10(pval)"].max()
+    tmp = tmp.replace([np.inf, -np.inf], max_non_inf)
+    tmp["-log10(pval)_minmax"] = (tmp["-log10(pval)"] - tmp["-log10(pval)"].min()) / (tmp["-log10(pval)"].max() - tmp["-log10(pval)"].min())
+    if args.gene_weight_minmax: weight_col = "-log10(pval)_minmax"
+    else: weight_col = "-log10(pval)"
+
+    kf = KFold(n_splits=args.num_folds, shuffle=True, random_state=42)
+    data_splits = list(kf.split(tmp))
+
+    for alpha in alphas_l:
+
+        # For each set of params, run kfolds, then decide whether to keep this set of params
+        alphas_sub, l1_ratios_sub, scores_sub, coeffs_sub, models_sub, conds_sub, pearson_rs_sub, mses_sub = [], [], [], [], [], [], [], []
+        for i, (train_index, test_index) in enumerate(data_splits):
+
+            # logging.error("Hello!!")
+            tmp_train, hr_train = get_split_data(tmp, train_index, args.output_label, args.abs_hr)
+            tmp_test, hr_test = get_split_data(tmp, test_index, args.output_label, args.abs_hr)
+
+            X_train = tmp_train.copy().drop(columns=[col, f"log{col}", "z_score", "P_value", "-log10(pval)_minmax", "-log10(pval)"])
+            X_test = tmp_test.copy().drop(columns=[col, f"log{col}", "z_score", "P_value", "-log10(pval)_minmax", "-log10(pval)"])
+
+            # Normalize the data
+            obj = StandardScaler()
+            obj = obj.fit(X_train)
+            X_train, X_test = obj.transform(X_train), obj.transform(X_test)
+    
+            # Adjust the alphas carefully, because with full cell-tissue dataset, some alphas do not reach convergence
+            model = ElasticNet(l1_ratio=l1_ratio, alpha=alpha, positive=args.positive, fit_intercept=args.intercept, max_iter=5000)
+
+            # Catch whether model converges
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always", ConvergenceWarning)
+                model.fit(X_train, hr_train)
+                if any(issubclass(warning.category, ConvergenceWarning) for warning in w):
+                    logging.error(f">>> {args.disease} with alpha={alpha:.3f} and l1_ratio={l1_ratio:.3f} did not converge")
+                    continue
+        
+            # Score the model
+            #pred = model.predict(sub_atl)
+            #score = r2_score(hr, pred)
+            score = model.score(X_test, hr_test)
+            pred = model.predict(X_test)
+            r, _ = pearsonr(hr_test, pred)
+            r = np.nan_to_num(r)
+            mse = mean_squared_error(hr_test, pred)
+            
+            alphas_sub.append(alpha)
+            scores_sub.append(score)
+            coeffs_sub.append(model.coef_)
+            l1_ratios_sub.append(l1_ratio)
+            conds_sub.append(args.disease)
+            models_sub.append(model)
+            pearson_rs_sub.append(r)
+            mses_sub.append(mse)
+            train_inds.append(train_index)
+
+        # Decide whether to keep this set of params
+        alphas.extend(alphas_sub)
+        scores.extend(scores_sub)
+        coeffs.extend(coeffs_sub)
+        l1_ratios.extend(l1_ratios_sub)
+        conds.extend(conds_sub)
+        models.extend(models_sub)
+        pearson_rs.extend(pearson_rs_sub)
+        mses.extend(mses_sub)
+                
+    perf_df = pd.DataFrame({"disease": conds, "alpha": alphas, "l1_ratio": l1_ratios, "pearson_r": pearson_rs, "mse": mses, "r2": scores})
+    coef_np = np.array(coeffs)
+    # logging.error(f"perf_df.shape: {perf_df.shape}")
+    # logging.error(f"coef_np.shape: {coef_np.shape}")
+    # logging.error(f"sub_atl.shape: {sub_atl.shape}")
+    # logging.error(f"tmp.shape: {tmp.shape}")
+    coef_df = pd.DataFrame(coef_np, columns=sub_atl.columns)
+    coef_df["disease"] = conds
+
+    # Calculate the average performance across folds
+    perf_df["model_run"] = perf_df.apply(lambda x: f"{x['alpha']:.5f}-{x['l1_ratio']:.5f}", axis=1)
+    grouped_df = perf_df.groupby("model_run")[["r2", "pearson_r", "mse"]].mean().reset_index().rename(columns={"r2": "r2_mean", "pearson_r": "pearson_r_mean", "mse": "mse_mean"})
+    perf_df = perf_df.merge(grouped_df, on="model_run", how="left")
+
+    # Found the set of params with the highest performance in pearson's R and R^2 respectively
+    if args.kfold_param == "r2": top_ind = perf_df["r2_mean"].idxmax()
+    elif args.kfold_param == "pearson_r": top_ind = perf_df["pearson_r_mean"].idxmax()
+    elif args.kfold_param == "mse": top_ind = perf_df["mse_mean"].idxmin()
+    top_model = perf_df.loc[top_ind, "model_run"]
+    top_alpha, top_l1 = float(top_model.split("-")[0]), float(top_model.split("-")[1])
+    top_r2, top_pearson, top_mse = perf_df.loc[top_ind, "r2_mean"], perf_df.loc[top_ind, "pearson_r_mean"], perf_df.loc[top_ind, "mse_mean"]
+
+    with open(f"{args.save_path}/best_model_by_{args.kfold_param}.txt", "w") as f:
+        f.write(f"Best model by {args.kfold_param} has alpha={top_alpha:.3f}, l1_ratio={top_l1:.3f} \
+                with mean kfold r2={top_r2:.3f}, pearson_r={top_pearson:.3f}, mse={top_mse:.3f} \n")
+    
+    return perf_df, coef_df, top_alpha, top_l1
 
 
 def _sampling(args, dataset_size: int):
@@ -269,74 +345,6 @@ def _sampling(args, dataset_size: int):
     return inds
 
 
-def permute_importance(args, prot_spec_final: pd.DataFrame, atlas_smal: pd.DataFrame, alpha: float, l1_ratio: float):
-    """
-    Calculate permutation importance of features as a negative control
-    """
-    # Transform the data
-    X_df = atlas_smal.copy()
-
-    sub_atl = X_df.loc[prot_spec_final["gene"].tolist(), :]
-    tmp = sub_atl.merge(prot_spec_final[[OUTPUT_LABEL, "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
-    tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
-    max_non_inf = tmp.loc[tmp["-log10(pval)"] != np.inf, "-log10(pval)"].max()
-    tmp = tmp.replace([np.inf, -np.inf], max_non_inf)
-    tmp["-log10(pval)_minmax"] = (tmp["-log10(pval)"] - tmp["-log10(pval)"].min()) / (tmp["-log10(pval)"].max() - tmp["-log10(pval)"].min())
-    hr = tmp[OUTPUT_LABEL]
-    hr = np.log(hr)
-    if args.abs_hr: hr = np.abs(hr)
-    sub_atl = sub_atl.loc[tmp.index, :]
-    feature_names = sub_atl.columns.tolist()
-
-    # Split the data k-fold
-    kf = KFold(n_splits=args.kfold_n, shuffle=True)
-    df_l = []
-    for i, (train_index, test_index) in enumerate(kf.split(sub_atl)):
-
-        obj = StandardScaler()
-        X_train, y_train = sub_atl.iloc[train_index], hr.iloc[train_index]
-        X_test, y_test = sub_atl.iloc[test_index], hr.iloc[test_index]
-        obj.fit(X_train)
-        X_train, X_test = obj.transform(X_train), obj.transform(X_test) 
-
-        # Train the model on the train folds
-        model = ElasticNet(l1_ratio=l1_ratio, alpha=alpha, positive=args.positive, fit_intercept=args.intercept, max_iter=5000)
-        if not args.gene_weight: model.fit(X_train, y_train)
-        else: model.fit(X_train, y_train, sample_weight=tmp.iloc[train_index]["-log10(pval)"].tolist())
-            
-        train_score = model.score(X_train, y_train)
-        test_score = model.score(X_test, y_test)
-        logging.error(f"Train score without sample weights: {train_score:.3f}, test score without sample weights: {test_score:.3f}")
-        if args.gene_weight:
-            train_score = model.score(X_train, y_train, sample_weight=tmp.iloc[train_index]["-log10(pval)"].tolist())
-            test_score = model.score(X_test, y_test, sample_weight=tmp.iloc[test_index]["-log10(pval)"].tolist())
-            logging.error(f"Train score with sample weights: {train_score:.3f}, test score with sample weights: {test_score:.3f}")
-
-        # Validate the model
-        if not args.gene_weight: r = permutation_importance(model, X_test, y_test, n_repeats=args.n_permute_repeat, random_state=0)
-        else: r = permutation_importance(model, X_test, y_test, sample_weight=tmp.iloc[test_index]["-log10(pval)"].tolist(), n_repeats=args.n_permute_repeat, random_state=0)
-        permute_scores = r.importances   # shape = (n_features, n_repeats)
-
-        # Store results
-        df = pd.DataFrame({
-            "cell_tissue": feature_names*args.n_permute_repeat, 
-            "score": permute_scores.flatten(order="F"),
-            "fold": [i]*permute_scores.size
-        })
-        df_l.append(df)
-
-    # Save results
-    final_df = pd.concat(df_l)
-    final_df.to_csv(f"{args.save_path}/permute_importance_scores.tsv", sep="\t", index=False)
-
-    # Make plots
-    plt.figure(figsize=(9, 20))
-    sns.boxplot(data=final_df, x="score", y="cell_tissue", hue="fold")
-    plt.axvline(0.0, color='black', linestyle='--')
-    plt.title(f"Permutscores at l1_ratio={l1_ratio:.2f}, alpha={alpha:.2f}, kfold={args.kfold_n}, repeats={args.n_permute_repeat}")
-    plt.savefig(f"{args.save_path}/permute_importance_scores.png", bbox_inches="tight", dpi=300)
-
-
 def _stability_analysis_one_alpha(
     args, obj, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame, 
     l1_ratio: float, alpha: float
@@ -345,18 +353,21 @@ def _stability_analysis_one_alpha(
     coeffs_sub = []
     dataset_size = prot_spec_final.shape[0]
     inds = _sampling(args, dataset_size)
+
+    col = "HR"
+    if col not in prot_spec_final.columns: col = "OR"
+
     for ind in inds:
 
         atlas_smal_subset = atlas_smal_merged.iloc[ind, :]
         sub_atl = obj.fit_transform(atlas_smal_subset.to_numpy())
         sub_atl = pd.DataFrame(sub_atl, columns=atlas_smal_subset.columns, index=atlas_smal_subset.index)
-        tmp = sub_atl.merge(prot_spec_final[[OUTPUT_LABEL, "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
+        tmp = sub_atl.merge(prot_spec_final[[col, f"log{col}", "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
         tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
         max_non_inf = tmp.loc[tmp["-log10(pval)"] != np.inf, "-log10(pval)"].max()
         tmp = tmp.replace([np.inf, -np.inf], max_non_inf)
         tmp["-log10(pval)_minmax"] = (tmp["-log10(pval)"] - tmp["-log10(pval)"].min()) / (tmp["-log10(pval)"].max() - tmp["-log10(pval)"].min())
-        hr = tmp[OUTPUT_LABEL]
-        hr = np.log(hr)
+        hr = tmp[args.output_label]
         if args.abs_hr: hr = np.abs(hr)
         sub_atl = sub_atl.loc[tmp.index, :]
 
@@ -404,82 +415,6 @@ def _stability_analysis_one_alpha(
         pickle.dump(inds, f)
 
 
-def _stability_analysis_alpha_list(
-    args, obj, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame, 
-    l1_ratio: float, alpha_list: list
-):
-    """
-    Calculate a set of stable variables from a list of l1
-    """
-    summary_arr_l = []
-    dataset_size = prot_spec_final.shape[0]
-    for alpha in alpha_list: 
-
-        logging.error(f"Working on {alpha:.3f}")
-        coeffs_sub = []
-        inds = _sampling(args, dataset_size)
-        for ind in inds:
-
-            atlas_smal_subset = atlas_smal_merged.iloc[ind, :]
-            sub_atl = obj.fit_transform(atlas_smal_subset.to_numpy())
-            sub_atl = pd.DataFrame(sub_atl, columns=atlas_smal_subset.columns, index=atlas_smal_subset.index)
-            tmp = sub_atl.merge(prot_spec_final[[OUTPUT_LABEL, "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
-            tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
-            max_non_inf = tmp.loc[tmp["-log10(pval)"] != np.inf, "-log10(pval)"].max()
-            tmp = tmp.replace([np.inf, -np.inf], max_non_inf)
-            tmp["-log10(pval)_minmax"] = (tmp["-log10(pval)"] - tmp["-log10(pval)"].min()) / (tmp["-log10(pval)"].max() - tmp["-log10(pval)"].min())
-            hr = tmp[OUTPUT_LABEL]
-            hr = np.log(hr)
-            if args.abs_hr: hr = np.abs(hr)
-
-            if args.gene_weight_minmax: weight_col = "-log10(pval)_minmax"
-            else: weight_col = "-log10(pval)"
-
-            # Adjust the alphas carefully, because with full cell-tissue dataset, some alphas do not reach convergence
-            model = ElasticNet(l1_ratio=l1_ratio, alpha=alpha, positive=args.positive, fit_intercept=args.intercept, max_iter=5000)
-
-            # Catch whether model converges
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("always", ConvergenceWarning)
-                if args.gene_weight: model.fit(sub_atl, hr, sample_weight=tmp[weight_col].tolist())
-                else: model.fit(sub_atl, hr)
-                if any(issubclass(warning.category, ConvergenceWarning) for warning in w):
-                    logging.error("Model not converges")
-                    continue
-
-            # Score the model
-            #pred = model.predict(sub_atl)
-            #score = r2_score(hr, pred)
-            if args.gene_weight: score = model.score(sub_atl, hr, sample_weight=tmp[weight_col].tolist())
-            else: score = model.score(sub_atl, hr)
-            pred = model.predict(sub_atl)
-            r, _ = pearsonr(hr, pred)
-            r = np.nan_to_num(r)
-
-            coeffs_sub.append(model.coef_)
-
-        # Calculate the percentage of params
-        arr = np.sum(np.array(coeffs_sub) != 0, axis=0) / args.num_iter
-        summary_arr_l.append(arr)
-
-    # Save the full results
-    final_arr = np.array(summary_arr_l) # final_arr.shape = (num_alpha, features)
-    with open(f"{args.save_path}/coeffs_sub_arr.npy", "wb") as f:
-        np.save(f, np.array(final_arr))
-    with open(f"{args.save_path}/inds.pkl", "wb") as f:
-        pickle.dump(inds, f)
-
-    # Identify the stable variables
-    max_vals = np.amax(final_arr, axis=0)
-    stable_vars = list(np.where(max_vals >= args.select_thres)[0])
-
-    # Save all results
-    final_df = pd.DataFrame(final_arr.T, columns=alpha_list, index=sub_atl.columns)
-    final_df["stable"] = [1 if i in stable_vars else 0 for i in range(final_df.shape[0])]
-    final_df["max_val"] = max_vals
-    final_df.sort_values(by="max_val", ascending=False).to_csv(f"{args.save_path}/coef_stability_select.tsv", sep="\t")
-
-
 def stability_selection(args, alpha: list, l1_ratio: float, prot_spec_final: pd.DataFrame, atlas_smal_merged: pd.DataFrame):
     """
     Run stability selection
@@ -490,17 +425,12 @@ def stability_selection(args, alpha: list, l1_ratio: float, prot_spec_final: pd.
     dataset_size = prot_spec_final.shape[0]
     if args.subset_size == -1: args.subset_size = (dataset_size) // 2
 
-    if args.optim_alpha_mode != "alpha_list":
-        _stability_analysis_one_alpha(args, obj, atlas_smal_merged, prot_spec_final, l1_ratio, alpha[0])
-    else:
-        _stability_analysis_alpha_list(args, obj, atlas_smal_merged, prot_spec_final, l1_ratio, alpha)
+    _stability_analysis_one_alpha(args, obj, atlas_smal_merged, prot_spec_final, l1_ratio, alpha[0])
 
 
 def main(args):
 
     # Save the arguments
-    global OUTPUT_LABEL
-    OUTPUT_LABEL = args.output_label
     os.makedirs(args.save_path, exist_ok=True)
     args_dict = vars(args)
     with open(f"{args.save_path}/cmd_args.json", "w") as json_file:
@@ -508,11 +438,13 @@ def main(args):
 
     # Load in the atlas data
     full_atlas = pd.read_csv(args.atlas_path, sep="\t")
+    if "gene" in full_atlas.columns: full_atlas = full_atlas.set_index("gene")
     atlas_smal = pd.read_csv(args.atlas_smal_path, sep="\t").set_index("gene")
 
     # Load in prot data
     logging.error("Loading prot data...")
-    prot_spec_final = load_prot_data(args.prot_data_path, args.disease, full_atlas).dropna(subset=OUTPUT_LABEL)
+    prot_spec_final = load_prot_data(args.prot_data_path, args.disease, full_atlas).dropna(subset=args.output_label)
+    prot_spec_final.to_csv(f"{args.save_path}/prot_spec_final.tsv", sep="\t", index=False)
 
     # Convert some argument values to bool
     args.abs_hr = args.abs_hr == 1
@@ -521,17 +453,16 @@ def main(args):
     args.gene_weight_minmax = args.gene_weight_minmax == 1
     args.intercept = args.intercept == 1
 
-    # Normalize data
-    # obj = StandardScaler()
-    # X = obj.fit_transform(atlas_smal.to_numpy())
-    # X_df = pd.DataFrame(X, columns=atlas_smal.columns, index=atlas_smal.index)
 
     # Train
     if args.optim_alpha_mode != "alpha_list":
         logging.error("Running hyperparam search...")
-        perf_df, coef_df, optim_alpha, optim_l1_ratio = hyperparam_search(args, atlas_smal, prot_spec_final)
-        logging.error("Running permutation importance for all features...")
-        permute_importance(args, prot_spec_final, atlas_smal, alpha=optim_alpha, l1_ratio=optim_l1_ratio)
+        if args.optim_alpha_mode == "kfold":
+            perf_df, coef_df, optim_alpha, optim_l1_ratio = hyperparam_search_kfold(args, atlas_smal, prot_spec_final)
+        else:
+            perf_df, coef_df, optim_alpha, optim_l1_ratio = hyperparam_search(args, atlas_smal, prot_spec_final)
+        #logging.error("Running permutation importance for all features...")
+        #permute_importance(args, prot_spec_final, atlas_smal, alpha=optim_alpha, l1_ratio=optim_l1_ratio)
         logging.error("Running stability selection...")
         stability_selection(args, [optim_alpha], optim_l1_ratio, prot_spec_final, atlas_smal)
         
@@ -565,6 +496,8 @@ if __name__ == "__main__":
     parser.add_argument("--optim_alpha_mode", type=str, default="kneedle", help="Method to find optim alpha value. If set to 'alpha_list', then use --alpha_list")
     parser.add_argument("--alpha_list", type=float, nargs="+", default=[0.2, 0.5, 0.7, 0.8, 0.9, 0.95], help="List of alpha values, overriding --optim_alpha_mode")
     parser.add_argument("--select_thres", type=float, default=0.2, help="Threshold to determine stable variables")
+    parser.add_argument("--kfold_param", type=str, default="pearson_r", help="kfold param to choose based on")
+    parser.add_argument("--num_folds", type=int, default=10, help="number of folds")
 
     # For permutation
     parser.add_argument("--kfold_n", type=int, default=5, help="Number of k for kfolds")

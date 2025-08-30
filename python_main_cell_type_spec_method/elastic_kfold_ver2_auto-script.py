@@ -1,7 +1,7 @@
 import os, subprocess
 import argparse
 
-BASH_SCRIPT_DIR = "bash_scripts/elasticnet_kfold_ver2.sh"
+BASH_SCRIPT_DIR = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/bash_scripts/elasticnet_kfold_ver2.sh"
 DISEASE_PROT_DIR = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/plasma_proteome/data"
 
 # Example run:
@@ -27,7 +27,7 @@ def main(in_args):
         os.makedirs(save_path, exist_ok=True)
         log_path = save_full_path
 
-        args = [in_args.atlas_path, in_args.atlas_smal_path, base_path, save_full_path, dis_name, str(in_args.num_alpha), str(in_args.num_folds), str(in_args.gene_weight)]
+        args = [in_args.atlas_path, in_args.atlas_smal_path, base_path, save_full_path, dis_name, str(in_args.num_alpha), str(in_args.num_folds), str(in_args.gene_weight), in_args.output_label]
         command = ["bsub"] + lsf_params + ["-oo", f"{log_path}/{disease}.stdout", "-eo", f"{log_path}/{disease}.stderr"] + ["bash", BASH_SCRIPT_DIR] + args
 
         if dis_name == in_args.disease_name:

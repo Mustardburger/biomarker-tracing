@@ -5,6 +5,7 @@ import os, argparse, kneed, pickle, logging
 import warnings, json, logging
 import matplotlib.pyplot as plt
 import seaborn as sns
+import scipy.stats as stats
 
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.metrics import r2_score
@@ -20,14 +21,6 @@ warnings.simplefilter("ignore", RuntimeWarning)
 GENE_ID_SYMBOLS = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/Alzheimer/CSF_proteomics_AD_onset/gene_id_symbol_df.tsv"
 GENE_ID_HGNC = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/Alzheimer/CSF_proteomics_AD_onset/gene_id_symbol_hgnc.tsv"
 OUTPUT_LABEL = "HR"
-
-
-# A function to clean some code
-def get_split_data(df, inds, abs_hr=False):
-    X_train = df.iloc[inds, :]
-    hr = np.log(X_train[OUTPUT_LABEL])
-    if abs_hr: hr = np.abs(hr)
-    return X_train, hr
 
 
 # A function to load the proteomics data
@@ -60,7 +53,12 @@ def load_prot_data(base_path: str, disease: str, atlas: pd.DataFrame):
     # Load in prot data
     prot_df = pd.read_csv(f"{os.path.join(base_path, disease)}.csv")
     prot_df = prot_df.rename(columns={"Protein": "gene_name"})
-    prot_df[OUTPUT_LABEL] = prot_df[f"{OUTPUT_LABEL}[95%CI]"].astype(str).apply(lambda x: float(x.split(" ")[0]))
+    
+    risk = "HR[95%CI]"
+    if risk not in prot_df.columns: risk = "OR[95%CI]"
+    risk_sm = risk.split("[")[0]
+    prot_df[risk_sm] = prot_df[risk].apply(lambda x: float(x.split(" ")[0]))
+    prot_df[f"log{risk_sm}"] = np.log(prot_df[risk_sm])
 
     # prot_spec_id contains some genes with duplicate gene ID
     prot_spec_id = pd.merge(left=prot_df, right=gene_names, on="gene_name", how="left")
@@ -110,14 +108,19 @@ def permute_importance(args, prot_spec_final: pd.DataFrame, atlas_smal: pd.DataF
     # Transform the data
     X_df = atlas_smal.copy()
 
+    col = "HR"
+    if col not in prot_spec_final.columns: col = "OR"
+
     sub_atl = X_df.loc[prot_spec_final["gene"].tolist(), :]
-    tmp = sub_atl.merge(prot_spec_final[[OUTPUT_LABEL, "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
+    tmp = sub_atl.merge(prot_spec_final[[col, f"log{col}", "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
     tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
+    tmp["z_score"] = (2*(tmp[col] > 1) - 1) * tmp["P_value"].apply(lambda x: stats.norm.isf(x / 2))
+
     max_non_inf = tmp.loc[tmp["-log10(pval)"] != np.inf, "-log10(pval)"].max()
     tmp = tmp.replace([np.inf, -np.inf], max_non_inf)
     tmp["-log10(pval)_minmax"] = (tmp["-log10(pval)"] - tmp["-log10(pval)"].min()) / (tmp["-log10(pval)"].max() - tmp["-log10(pval)"].min())
-    hr = tmp[OUTPUT_LABEL]
-    hr = np.log(hr)
+    hr = tmp[args.output_label]
+
     if args.abs_hr: hr = np.abs(hr)
     sub_atl = sub_atl.loc[tmp.index, :]
     feature_names = sub_atl.columns.tolist()
@@ -125,42 +128,36 @@ def permute_importance(args, prot_spec_final: pd.DataFrame, atlas_smal: pd.DataF
     # Split the data k-fold
     kf = KFold(n_splits=args.kfold_n, shuffle=True, random_state=42)
     df_l = []
+    for i, (train_index, test_index) in enumerate(kf.split(sub_atl)):
 
-    with open(f"{args.save_path}/model_perf.txt", "a") as f:
-        f.write("\n")
+        obj = StandardScaler()
+        X_train, y_train = sub_atl.iloc[train_index], hr.iloc[train_index]
+        X_test, y_test = sub_atl.iloc[test_index], hr.iloc[test_index]
+        obj.fit(X_train)
+        X_train, X_test = obj.transform(X_train), obj.transform(X_test) 
 
-        for i, (train_index, test_index) in enumerate(kf.split(sub_atl)):
+        # Train the model on the train folds
+        model = RandomForestRegressor(
+            n_estimators=args.num_trees, min_samples_split=args.min_samples_split, min_samples_leaf=args.min_samples_leaf,
+            max_samples=args.max_samples, n_jobs=-1
+        )
+        model.fit(sub_atl, hr)
+            
+        train_score = model.score(X_train, y_train)
+        test_score = model.score(X_test, y_test)
+        logging.error(f"Train score without sample weights: {train_score:.3f}, test score without sample weights: {test_score:.3f}")
 
-            obj = StandardScaler()
-            X_train, y_train = sub_atl.iloc[train_index], hr.iloc[train_index]
-            X_test, y_test = sub_atl.iloc[test_index], hr.iloc[test_index]
-            obj.fit(X_train)
-            X_train, X_test = obj.transform(X_train), obj.transform(X_test) 
+        # Validate the model
+        r = permutation_importance(model, X_test, y_test, n_repeats=args.n_permute_repeat, random_state=0)
+        permute_scores = r.importances   # shape = (n_features, n_repeats)
 
-            # Train the model on the train folds
-            model = RandomForestRegressor(
-                n_estimators=args.num_trees, min_samples_split=args.min_samples_split, min_samples_leaf=args.min_samples_leaf,
-                max_samples=args.max_samples, n_jobs=-1
-            )
-            model.fit(sub_atl, hr)
-                
-            train_score = model.score(X_train, y_train)
-            test_score = model.score(X_test, y_test)
-            f.write(f"Train score without sample weights: {train_score:.3f}, test score without sample weights: {test_score:.3f}\n")
-
-            # Validate the model
-            r = permutation_importance(
-                model, X_test, y_test,
-                n_repeats=args.n_permute_repeat, random_state=0)
-            permute_scores = r.importances   # shape = (n_features, n_repeats)
-
-            # Store results
-            df = pd.DataFrame({
-                "cell_tissue": feature_names*args.n_permute_repeat, 
-                "score": permute_scores.flatten(order="F"),
-                "fold": [i]*permute_scores.size
-            })
-            df_l.append(df)
+        # Store results
+        df = pd.DataFrame({
+            "cell_tissue": feature_names*args.n_permute_repeat, 
+            "score": permute_scores.flatten(order="F"),
+            "fold": [i]*permute_scores.size
+        })
+        df_l.append(df)
 
     # Save results
     final_df = pd.concat(df_l)
@@ -178,30 +175,32 @@ def random_forests(args, prot_spec_final: pd.DataFrame, atlas_smal_merged: pd.Da
     """
     Run random forests
     """
+    col = "HR"
+    if col not in prot_spec_final.columns: col = "OR"
     obj = StandardScaler()
 
     atlas_smal_subset = atlas_smal_merged
     sub_atl = obj.fit_transform(atlas_smal_subset.to_numpy())
     sub_atl = pd.DataFrame(sub_atl, columns=atlas_smal_subset.columns, index=atlas_smal_subset.index)
-    tmp = sub_atl.merge(prot_spec_final[[OUTPUT_LABEL, "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
+
+    tmp = sub_atl.merge(prot_spec_final[[col, f"log{col}", "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
     tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
+    tmp["z_score"] = (2*(tmp[col] > 1) - 1) * tmp["P_value"].apply(lambda x: stats.norm.isf(x / 2))
+
     max_non_inf = tmp.loc[tmp["-log10(pval)"] != np.inf, "-log10(pval)"].max()
     tmp = tmp.replace([np.inf, -np.inf], max_non_inf)
     tmp["-log10(pval)_minmax"] = (tmp["-log10(pval)"] - tmp["-log10(pval)"].min()) / (tmp["-log10(pval)"].max() - tmp["-log10(pval)"].min())
-    hr = tmp[OUTPUT_LABEL]
-    hr = np.log(hr)
+    
+    hr = tmp[args.output_label]
     if args.abs_hr: hr = np.abs(hr)
     sub_atl = sub_atl.loc[tmp.index, :]
 
     # Random forest
     model = RandomForestRegressor(
         n_estimators=args.num_trees, min_samples_split=args.min_samples_split, min_samples_leaf=args.min_samples_leaf,
-        max_samples=args.max_samples, n_jobs=-1, oob_score=True
+        max_samples=args.max_samples, n_jobs=-1
     )
     model.fit(sub_atl, hr)
-
-    with open(f"{args.save_path}/model_perf.txt", "w") as f:
-        f.write(f"OOB score measured in R2 is: {model.oob_score_:.3f}")
 
     # Save results
     scores = model.feature_importances_  # one-dimensional numpy array
@@ -214,8 +213,6 @@ def random_forests(args, prot_spec_final: pd.DataFrame, atlas_smal_merged: pd.Da
 def main(args):
 
     # Save the arguments
-    global OUTPUT_LABEL
-    OUTPUT_LABEL = args.output_label
     os.makedirs(args.save_path, exist_ok=True)
     args_dict = vars(args)
     with open(f"{args.save_path}/cmd_args.json", "w") as json_file:
@@ -223,12 +220,11 @@ def main(args):
 
     # Load in the atlas data
     full_atlas = pd.read_csv(args.atlas_path, sep="\t")
-    if "gene" in full_atlas.columns: full_atlas = full_atlas.set_index("gene")
     atlas_smal = pd.read_csv(args.atlas_smal_path, sep="\t").set_index("gene")
 
     # Load in prot data
     logging.error("Loading prot data...")
-    prot_spec_final = load_prot_data(args.prot_data_path, args.disease, full_atlas).dropna(subset=OUTPUT_LABEL)
+    prot_spec_final = load_prot_data(args.prot_data_path, args.disease, full_atlas).dropna(subset=args.output_label)
 
     # Convert some argument values to bool
     args.abs_hr = args.abs_hr == 1
