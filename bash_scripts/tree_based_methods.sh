@@ -20,6 +20,7 @@ max_samples=${10}
 
 kfold_n=${11}
 n_permute_repeat=${12}
+param_search=${13}
 
 # Version of the code when splitting the data by cell-tissue pair
 python $script_dir \
@@ -28,6 +29,7 @@ python $script_dir \
 --prot_data_path $prot_data_path \
 --save_path $save_path \
 --disease $disease \
+--param_search $param_search \
 --num_trees $num_trees \
 --min_samples_split $min_samples_split \
 --min_samples_leaf $min_samples_leaf \

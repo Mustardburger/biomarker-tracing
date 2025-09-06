@@ -31,7 +31,7 @@ def main(in_args):
         args = [
             in_args.atlas_path, in_args.atlas_smal_path, base_path, save_full_path, dis_name, in_args.output_label,
             str(in_args.num_trees), str(in_args.min_samples_split), str(in_args.min_samples_leaf), str(in_args.max_samples),
-            str(in_args.kfold_n), str(in_args.n_permute_repeat)
+            str(in_args.kfold_n), str(in_args.n_permute_repeat), str(in_args.param_search)
         ]
         command = ["bsub"] + lsf_params + ["-oo", f"{log_path}/{disease}.stdout", "-eo", f"{log_path}/{disease}.stderr"] + ["bash", BASH_SCRIPT_DIR] + args
         
@@ -58,6 +58,7 @@ if __name__ == "__main__":
     parser.add_argument("--disease_type", required=False, type=str, default="incident")
     parser.add_argument("--popu_type", required=False, type=str, default="all")
 
+    parser.add_argument("--param_search", required=False, type=int, default=0)
     parser.add_argument("--num_trees", required=False, type=int, default=1000)
     parser.add_argument("--min_samples_split", required=False, type=int, default=10)
     parser.add_argument("--min_samples_leaf", required=False, type=int, default=2)
