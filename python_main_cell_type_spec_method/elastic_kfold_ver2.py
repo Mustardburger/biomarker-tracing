@@ -84,8 +84,7 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
 
     alphas, l1_ratios, scores, coeffs, models, conds, pearson_rs, mses, train_inds = [], [], [], [], [], [], [], [], []
     alphas_l = np.logspace(-3, 0, args.num_alphas)
-    # l1_ratios_l = [.2, .5, .7, .9, .95, .99, 1]
-    l1_ratios_l = [0.001, 0.005, 0.01, 0.05, 0.1, 0.15, .2, .7, .9, 1]
+    l1_ratios_l = [(10e-5), 0.001, 0.005, 0.01, 0.05, 0.1, .2, .5, .7, .9, .95, .99]
     num_ens = len(l1_ratios_l) * len(alphas_l)
 
     # Because here we run kfolds, it's important to do data normalization individually for each training fold
@@ -109,10 +108,12 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     data_splits = list(kf.split(tmp))
     # logging.error(data_splits)
 
+    logging.error(f"alpha_l = {alphas_l}")
+    logging.error(f"l1_ratios_l = {l1_ratios_l}")
     for alpha in alphas_l:
         for l1_ratio in l1_ratios_l:
 
-            logging.error(f"Working on alpha={alpha:.2f} l1_ratio={l1_ratio:.2f}")
+            logging.error(f"Working on alpha={alpha:.2f} l1_ratio={l1_ratio}")
             # For each set of params, run kfolds, then decide whether to keep this set of params
             alphas_sub, l1_ratios_sub, scores_sub, coeffs_sub, models_sub, conds_sub, pearson_rs_sub, mses_sub = [], [], [], [], [], [], [], []
             for i, (train_index, test_index) in enumerate(data_splits):
@@ -275,6 +276,7 @@ def main(args):
     # X_df = pd.DataFrame(X, columns=atlas_smal.columns, index=atlas_smal.index)
 
     # Train
+    logging.error("Starting training...")
     perf_df, coef_df, full_model_df, coef_df_full, num_ens = train(args, atlas_smal, prot_spec_final)
 
     # Make some plots
@@ -295,7 +297,7 @@ if __name__ == "__main__":
     parser.add_argument("--pos_coef", type=int, default=0, help="Whether to only have positive coefficients in the model")
     parser.add_argument("--gene_weight", type=int, default=1, help="Whether to use -log10(pval) for gene weight")
     parser.add_argument("--gene_weight_minmax", type=int, default=0, help="Whether to minmax gene weight")
-    parser.add_argument("--intercept", type=int, default=0, help="Whether to have intercept in elasticnet")
+    parser.add_argument("--intercept", type=int, default=1, help="Whether to have intercept in elasticnet")
     parser.add_argument("--num_alphas", type=int, default=100, help="Number of alphas for elasticnet")
     parser.add_argument("--num_folds", type=int, default=10, help="Number of k folds")
 

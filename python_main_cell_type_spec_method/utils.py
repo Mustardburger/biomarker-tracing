@@ -1,5 +1,11 @@
 import numpy as np
 import pandas as pd
+import os
+import scipy.stats as stats
+
+GENE_ID_SYMBOLS = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/Alzheimer/CSF_proteomics_AD_onset/gene_id_symbol_df.tsv"
+GENE_ID_HGNC = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/Alzheimer/CSF_proteomics_AD_onset/gene_id_symbol_hgnc.tsv"
+
 
 # A function to load the proteomics data
 def load_prot_data(base_path: str, disease: str, atlas: pd.DataFrame):
@@ -77,3 +83,24 @@ def load_prot_data(base_path: str, disease: str, atlas: pd.DataFrame):
     # Remove genes not in atlas
     prot_spec_final = prot_spec_id[~prot_spec_id["gene"].isin(list(prot_uniq_genes))].drop_duplicates(subset="gene", keep="first")
     return prot_spec_final
+
+
+# A function to prep the data for training
+def prep_data(args, df: pd.DataFrame, col: str):
+    """
+    Add some columns that help in training
+    """
+
+    df["-log10(pval)"] = -np.log10(df["P_value"])
+    df["z_score"] = (2*(df[col] > 1) - 1) * df["P_value"].apply(lambda x: stats.norm.isf(x / 2))
+    max_non_inf = df.loc[df["-log10(pval)"] != np.inf, "-log10(pval)"].max()
+    df = df.replace([np.inf, -np.inf], max_non_inf)
+    df["-log10(pval)_minmax"] = (df["-log10(pval)"] - df["-log10(pval)"].min()) / (df["-log10(pval)"].max() - df["-log10(pval)"].min())
+    
+    y = df[args.output_label]
+    if args.abs_hr: y = np.abs(y)
+
+    if args.gene_weight_minmax: weight_col = "-log10(pval)_minmax"
+    else: weight_col = "-log10(pval)"
+
+    return df, y, weight_col

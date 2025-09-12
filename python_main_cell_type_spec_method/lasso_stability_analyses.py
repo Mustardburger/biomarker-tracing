@@ -14,7 +14,7 @@ from sklearn.linear_model import ElasticNet
 from scipy.stats import pearsonr, spearmanr
 from scipy.optimize import curve_fit
 from sklearn.model_selection import KFold
-from utils import load_prot_data
+from utils import *
 
 warnings.simplefilter("ignore", RuntimeWarning)
 
@@ -287,20 +287,10 @@ def _stability_analysis_one_alpha(
         atlas_smal_subset = atlas_smal_merged.iloc[ind, :]
         sub_atl = obj.fit_transform(atlas_smal_subset.to_numpy())
         sub_atl = pd.DataFrame(sub_atl, columns=atlas_smal_subset.columns, index=atlas_smal_subset.index)
-
         tmp = sub_atl.merge(prot_spec_final[[col, f"log{col}", "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
-        tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
-        tmp["z_score"] = (2*(tmp[col] > 1) - 1) * tmp["P_value"].apply(lambda x: stats.norm.isf(x / 2))
-        max_non_inf = tmp.loc[tmp["-log10(pval)"] != np.inf, "-log10(pval)"].max()
-        tmp = tmp.replace([np.inf, -np.inf], max_non_inf)
-        tmp["-log10(pval)_minmax"] = (tmp["-log10(pval)"] - tmp["-log10(pval)"].min()) / (tmp["-log10(pval)"].max() - tmp["-log10(pval)"].min())
-        
-        hr = tmp[args.output_label]
-        if args.abs_hr: hr = np.abs(hr)
-        sub_atl = sub_atl.loc[tmp.index, :]
 
-        if args.gene_weight_minmax: weight_col = "-log10(pval)_minmax"
-        else: weight_col = "-log10(pval)"
+        tmp, hr, weight_col = prep_data(args, tmp, col)
+        sub_atl = sub_atl.loc[tmp.index, :]
 
         # Adjust the alphas carefully, because with full cell-tissue dataset, some alphas do not reach convergence
         model = ElasticNet(l1_ratio=l1_ratio, alpha=alpha, positive=args.positive, fit_intercept=args.intercept, max_iter=5000)

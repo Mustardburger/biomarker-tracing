@@ -26,7 +26,7 @@ def main(in_args):
         save_full_path = os.path.join(save_path, dis_name)
         os.makedirs(save_path, exist_ok=True)
         log_path = save_full_path
-        # log_path = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/logs/"
+        log_path = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/"
 
         args = [
             in_args.atlas_path, in_args.atlas_smal_path, base_path, save_full_path, dis_name, in_args.output_label,

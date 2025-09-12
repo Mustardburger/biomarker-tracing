@@ -147,14 +147,19 @@ def hyperparam_search(args, prot_spec_final: pd.DataFrame, atlas_smal_merged: pd
                         random_state=42
                     )
                     model.fit(sub_atl, hr)
-                    results.append(((n, mf, md, ms), rf.oob_score_))
+                    results.append(((n, mf, md, ms), model.oob_score_))
 
     # Best results
     best_params, best_oob = max(results, key=lambda x: x[1])
-    args.num_trees = best_params["n_estimators"]
-    args.max_features = best_params["max_features"]
-    args.max_depth = best_params["max_depth"]
-    args.min_samples_leaf = best_params["min_samples_leaf"]
+    args.num_trees = best_params[0]
+    args.max_features = best_params[1]
+    args.max_depth = best_params[2]
+    args.min_samples_leaf = best_params[3]
+
+    # Save the results
+    tmp = [[*i[0], i[1]] for i in results]
+    df = pd.DataFrame(tmp, columns=["n_estimators", "max_features", "max_depth", "min_sample_leaf", "r2"])
+    df.to_csv(f"{args.save_path}/hyperparam_search_results.tsv", sep="\t", index=False)
 
     return args
 
@@ -205,13 +210,13 @@ def main(args):
 
     # Load in the atlas data
     full_atlas = pd.read_csv(args.atlas_path, sep="\t")
+    if "gene" in full_atlas.columns: full_atlas = full_atlas.set_index("gene")
     atlas_smal = pd.read_csv(args.atlas_smal_path, sep="\t").set_index("gene")
 
     # Load in prot data
     logging.error("Loading prot data...")
     prot_spec_final = load_prot_data(args.prot_data_path, args.disease, full_atlas)
-    logging.error(f"1: {prot_spec_final.shape}")
-    logging.error(f"{prot_spec_final.head()}")
+    prot_spec_final.to_csv(f"{args.save_path}/prot_spec_final.tsv", sep="\t", index=False)
 
     # Convert some argument values to bool
     args.abs_hr = args.abs_hr == 1
