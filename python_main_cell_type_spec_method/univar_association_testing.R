@@ -24,7 +24,9 @@ option_list <- list(
   make_option(c("--dep_var"), type="character", default="z",
               help="Dependent variable"),
   make_option(c("--z_transform"), type="integer", default=0,
-              help="Whether to transform the data by z-scoring first")
+              help="Whether to transform the data by z-scoring first"),
+  make_option(c("--abs_hr"), type="integer", default=0,
+              help="Whether to take the absolute value of the output")
 )
 
 # Parse options
@@ -64,6 +66,9 @@ prot_df$beta = log10(prot_df$HR)
 prot_df$neg_log10_pval = -log10(prot_df$P_value)
 log_half_p = -(prot_df$neg_log10_pval) - log(2)
 prot_df$z = sign(prot_df$beta) * qnorm(log_half_p, lower.tail = FALSE, log.p = TRUE)
+if (opt$abs_hr == 1) {
+    prot_df$z = abs(prot_df$z)
+}
 prot_df = prot_df[, c(dep_var, "gene")]
 
 ### Setup for linear regression
@@ -83,6 +88,7 @@ tval_intc_l = c()
 r2_l = c()
 new_cell_tis = c()
 res_pval_l = c()
+pval_indep_1side_l = c()
 
 for (ct in cell_tis) {
     if (ct == "gene") {next}
@@ -133,6 +139,10 @@ for (ct in cell_tis) {
     # R-squared
     r2 <- summary_model$r.squared
 
+    # One-sided t-test
+    df_resid <- summary_model$df[2]
+    pval_one_sided <- 1 - pt(tval_indep, df = df_resid)
+
     # Print results
     res = paste0(ct, " has tval: ", formatC(tval_indep, digits=3, format="f"), " and pval: ", formatC(pval_indep, digits=8, format="f"))
     print(res)
@@ -143,6 +153,7 @@ for (ct in cell_tis) {
     beta_intc_l = c(beta_intc_l, intc)
     pval_intc_l = c(pval_intc_l, pval_intc)
     tval_intc_l = c(tval_intc_l, tval_intc)
+    pval_indep_1side_l = c(pval_indep_1side_l, pval_one_sided)
     r2_l = c(r2_l, r2)
 }
 
@@ -156,11 +167,13 @@ final_df = data.frame(
     pval_intercept = pval_intc_l,
     tval_intercept = tval_intc_l,
     r2_score = r2_l,
-    residual_pval = res_pval_l
+    residual_pval = res_pval_l,
+    pval_predictor_one_side = pval_indep_1side_l
 )
 final_df$fdr_predictor = p.adjust(final_df$pval_predictor)
+final_df$fdr_one_side_predictor = p.adjust(final_df$pval_predictor_one_side)
 final_df = final_df %>%
-    dplyr::arrange(fdr_predictor)
+    dplyr::arrange(fdr_one_side_predictor)
 
 head(final_df)
 

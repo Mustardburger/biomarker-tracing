@@ -21,6 +21,7 @@ max_samples=${10}
 kfold_n=${11}
 n_permute_repeat=${12}
 param_search=${13}
+abs_hr=${14}
 
 # Version of the code when splitting the data by cell-tissue pair
 python $script_dir \
@@ -36,4 +37,5 @@ python $script_dir \
 --max_samples $max_samples \
 --kfold_n $kfold_n \
 --n_permute_repeat $n_permute_repeat \
---output_label $output_label
+--output_label $output_label \
+--abs_hr $abs_hr

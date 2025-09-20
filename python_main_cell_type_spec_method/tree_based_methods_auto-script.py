@@ -31,7 +31,7 @@ def main(in_args):
         args = [
             in_args.atlas_path, in_args.atlas_smal_path, base_path, save_full_path, dis_name, in_args.output_label,
             str(in_args.num_trees), str(in_args.min_samples_split), str(in_args.min_samples_leaf), str(in_args.max_samples),
-            str(in_args.kfold_n), str(in_args.n_permute_repeat), str(in_args.param_search)
+            str(in_args.kfold_n), str(in_args.n_permute_repeat), str(in_args.param_search), str(in_args.abs_hr)
         ]
         command = ["bsub"] + lsf_params + ["-oo", f"{log_path}/{disease}.stdout", "-eo", f"{log_path}/{disease}.stderr"] + ["bash", BASH_SCRIPT_DIR] + args
         
@@ -66,6 +66,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--kfold_n", type=int, default=5, help="Number of k for kfolds")
     parser.add_argument("--n_permute_repeat", type=int, default=30, help="Number of n permutations")
+    parser.add_argument("--abs_hr", type=int, default=0, help="Whether to take abs_hr")
 
     args = parser.parse_args()
     main(args)

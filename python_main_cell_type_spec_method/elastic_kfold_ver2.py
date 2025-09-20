@@ -82,13 +82,23 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     # Some evidence that this might work. Let's build this pipeline for all diseases
     # diseases = prot_df["Outcome"].unique().tolist()
 
-    alphas, l1_ratios, scores, coeffs, models, conds, pearson_rs, mses, train_inds = [], [], [], [], [], [], [], [], []
-    alphas_l = np.logspace(-3, 0, args.num_alphas)
-    l1_ratios_l = [(10e-5), 0.001, 0.005, 0.01, 0.05, 0.1, .2, .5, .7, .9, .95, .99]
-    num_ens = len(l1_ratios_l) * len(alphas_l)
-
     # Because here we run kfolds, it's important to do data normalization individually for each training fold
     X_df = atlas_smal_merged.copy()
+
+    alphas, l1_ratios, scores, coeffs, models, conds, pearson_rs, mses, train_inds = [], [], [], [], [], [], [], [], []
+
+    # Some weird heuristics here, may need to rethink this:
+    num_features_thres = 70
+    if (X_df.shape[1] <= num_features_thres):
+        logging.error(f"Number of features below {num_features_thres}, hyperparam search on the denser end")
+        alphas_l = np.logspace(-3, 0, args.num_alphas)
+        l1_ratios_l = [(10e-5), 0.001, 0.005, 0.01, 0.05, 0.1, .2, .5, .7, .9, .95, .99]
+    else:
+        logging.error(f"Number of features above {num_features_thres}, hyperparam search on the sparser end")
+        alphas_l = np.logspace(-1, 1, args.num_alphas)
+        l1_ratios_l = [.05, .1, .2, .5, .7, .9, .95, .99]
+
+    num_ens = len(l1_ratios_l) * len(alphas_l)
 
     col = "HR"
     if col not in prot_spec_final.columns: col = "OR"
