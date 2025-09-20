@@ -13,7 +13,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import ElasticNet
 from scipy.stats import pearsonr, spearmanr
 from sklearn.model_selection import KFold
-from utils import load_prot_data
 
 warnings.simplefilter("ignore", RuntimeWarning)
 
@@ -56,6 +55,84 @@ def _plot(inds, coef_df: pd.DataFrame, disease: str, save_path: str, save_name: 
     plt.savefig(f"{save_path}/{save_name}.png", bbox_inches="tight", dpi=300)
 
 
+# A function to load the proteomics data
+def load_prot_data(base_path: str, disease: str, atlas: pd.DataFrame):
+
+    # Mapping gene name to gene ID and vice versa
+    gene_names_other = pd.read_csv(GENE_ID_SYMBOLS, sep="\t").rename(columns={"gene_ids": "gene", "gene_symbols": "gene_name"})
+    gene_names_hgnc = pd.read_csv(GENE_ID_HGNC, sep="\t")
+    gene_names_hgnc = gene_names_hgnc.drop(columns=["Status", "Approved_name", "HGNC_ID", "NCBI_gene_ID", "UCSC_gene_ID"]).rename(columns={"Approved_symbol": "gene_name", "Ensembl_gene_ID": "gene"})
+
+    # Concat 2 gene names dataframe
+    gene_names = pd.concat([gene_names_other, gene_names_hgnc], axis=0).drop_duplicates()
+
+    # Some manual mappings from proteomic IDs to gene IDs
+    mappings = {
+        "BAP18": "ENSG00000258315",  # ID for BACC1, a gene decoding for BAP18
+        "CERT": "ENSG00000113163",    # CERT actual name is CERT1 which has ID ENSG00000113163
+        "GPR15L": "ENSG00000188373",   # The name on the internet is GPR15LG
+        "KIR2DL2": "ENSG00000273661",  # This gene does not have an Ensembl ID that matches in the atlas
+        "HLA": "ENSG00000204592",
+        "MENT": "ENSG00000143443",  # ID for the homolog C6orf56
+        "LEG1": "ENSG00000184530",   # ID for the homolog C6orf58
+        "LILRA3": "ENSG00000278046", # This gene does not have an Ensembl ID that matches in the atlas
+        "NTproBNP": "ENSG00000120937",
+        "HLA-DRA": "ENSG00000204287",    # At row 507, where gene_name is also HLA but predictor is HLA-DRA, the gene ID is ENSG00000204287
+        "PALM2": "ENSG00000157654",   # ID for PALM2AKAP2, a fusion gene for PALM2-AKAP2
+        "SARG": "ENSG00000182795"   # ID for homolog C1orf116
+    }
+
+    # Load in prot data
+    prot_df = pd.read_csv(f"{os.path.join(base_path, disease)}.csv")
+    prot_df = prot_df.rename(columns={"Protein": "gene_name"})
+
+    risk = "HR[95%CI]"
+    if risk not in prot_df.columns: risk = "OR[95%CI]"
+    risk_sm = risk.split("[")[0]
+    prot_df[risk_sm] = prot_df[risk].apply(lambda x: float(x.split(" ")[0]))
+    prot_df[f"log{risk_sm}"] = np.log(prot_df[risk_sm])
+
+    # prot_spec_id contains some genes with duplicate gene ID
+    prot_spec_id = pd.merge(left=prot_df, right=gene_names, on="gene_name", how="left")
+    dup_genes = prot_spec_id[prot_spec_id.duplicated('gene_name', keep=False)]["gene"].unique().tolist()
+
+    #### Taking care of genes with missing or duplicate gene IDs ####
+    # Find proteins with missing mappings
+    a = prot_spec_id[prot_spec_id.duplicated('gene', keep=False)].sort_values(by="gene_name")
+    pair = [i.split("_") for i in a["gene_name"].tolist() if "_" in i]
+    pair = [item for sublist in pair for item in sublist]
+    single = [i for i in a["gene_name"].tolist() if "_" not in i]
+
+    # For singles, the dictionary above provides the mappings
+    prot_spec_id['gene'] = prot_spec_id.apply(lambda row: mappings.get(row['gene_name'], row['gene']), axis=1)
+
+    # For pairs, after splitting, most the genes can be mapped to gene IDs
+    gene_name_pairs = (
+        gene_names[gene_names["gene_name"].isin(pair)]
+        .drop_duplicates(subset="gene_name")
+        .rename(columns={"gene_name": "gene_name_single"})
+    )
+    prot_spec_id["gene_name_single"] = prot_spec_id["gene_name"].apply(lambda x: x.split("_")[0] if "_" in x else x)
+    prot_spec_id = prot_spec_id.merge(gene_name_pairs, on='gene_name_single', how='left', suffixes=('', '_small'))
+    prot_spec_id['gene'] = prot_spec_id['gene'].fillna(prot_spec_id['gene_small'])
+    prot_spec_id.drop(columns=['gene_small', "gene_name_single"], inplace=True)
+
+    # After all the mappings, NPPB and NTproBNP has the same ENSG. Retain the one with the smaller pval
+    larger_pval = prot_spec_id[prot_spec_id["gene_name"].isin(["NPPB", "NTproBNP"])]["P_value"].max()
+    dropped_prot = prot_spec_id[(prot_spec_id["gene_name"].isin(["NPPB", "NTproBNP"])) & (prot_spec_id["P_value"] == larger_pval)]["gene_name"].item()
+    prot_spec_id = prot_spec_id[prot_spec_id["gene_name"] != dropped_prot].drop_duplicates(subset="gene")
+
+    #### Also take care of genes with duplicate gene IDs ####
+    # Some genes with duplicate gene IDs, the rogue IDs will be omitted when merging with the atlas
+
+    # Some genes are not in the atlas. Let's check what they are
+    prot_uniq_genes = set(prot_spec_id["gene"].tolist()) - set(atlas.index.tolist())
+
+    # Remove genes not in atlas
+    prot_spec_final = prot_spec_id[~prot_spec_id["gene"].isin(list(prot_uniq_genes))].drop_duplicates(subset="gene", keep="first")
+    return prot_spec_final
+
+
 # For each disease, rank and plot the top most positive and top most negative coefficients
 def plot_top_coeff_ens(args, disease: str, coef_df: pd.DataFrame, perf_df: pd.DataFrame, 
                        coef_df_full: pd.DataFrame, full_model_df: pd.DataFrame, 
@@ -82,23 +159,14 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     # Some evidence that this might work. Let's build this pipeline for all diseases
     # diseases = prot_df["Outcome"].unique().tolist()
 
+    alphas, l1_ratios, scores, coeffs, models, conds, pearson_rs, mses, train_inds = [], [], [], [], [], [], [], [], []
+    alphas_l = np.logspace(-3, 0, args.num_alphas)
+    # l1_ratios_l = [.2, .5, .7, .9, .95, .99, 1]
+    l1_ratios_l = [0.001, 0.005, 0.01, 0.05, 0.1, 0.15, .2, .7, .9, 1]
+    num_ens = len(l1_ratios_l) * len(alphas_l)
+
     # Because here we run kfolds, it's important to do data normalization individually for each training fold
     X_df = atlas_smal_merged.copy()
-
-    alphas, l1_ratios, scores, coeffs, models, conds, pearson_rs, mses, train_inds = [], [], [], [], [], [], [], [], []
-
-    # Some weird heuristics here, may need to rethink this:
-    num_features_thres = 70
-    if (X_df.shape[1] <= num_features_thres):
-        logging.error(f"Number of features below {num_features_thres}, hyperparam search on the denser end")
-        alphas_l = np.logspace(-3, 0, args.num_alphas)
-        l1_ratios_l = [(10e-5), 0.001, 0.005, 0.01, 0.05, 0.1, .2, .5, .7, .9, .95, .99]
-    else:
-        logging.error(f"Number of features above {num_features_thres}, hyperparam search on the sparser end")
-        alphas_l = np.logspace(-1, 1, args.num_alphas)
-        l1_ratios_l = [.05, .1, .2, .5, .7, .9, .95, .99]
-
-    num_ens = len(l1_ratios_l) * len(alphas_l)
 
     col = "HR"
     if col not in prot_spec_final.columns: col = "OR"
@@ -118,12 +186,10 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     data_splits = list(kf.split(tmp))
     # logging.error(data_splits)
 
-    logging.error(f"alpha_l = {alphas_l}")
-    logging.error(f"l1_ratios_l = {l1_ratios_l}")
     for alpha in alphas_l:
         for l1_ratio in l1_ratios_l:
 
-            logging.error(f"Working on alpha={alpha:.2f} l1_ratio={l1_ratio}")
+            logging.error(f"Working on alpha={alpha:.2f} l1_ratio={l1_ratio:.2f}")
             # For each set of params, run kfolds, then decide whether to keep this set of params
             alphas_sub, l1_ratios_sub, scores_sub, coeffs_sub, models_sub, conds_sub, pearson_rs_sub, mses_sub = [], [], [], [], [], [], [], []
             for i, (train_index, test_index) in enumerate(data_splits):
@@ -286,7 +352,6 @@ def main(args):
     # X_df = pd.DataFrame(X, columns=atlas_smal.columns, index=atlas_smal.index)
 
     # Train
-    logging.error("Starting training...")
     perf_df, coef_df, full_model_df, coef_df_full, num_ens = train(args, atlas_smal, prot_spec_final)
 
     # Make some plots
@@ -307,7 +372,7 @@ if __name__ == "__main__":
     parser.add_argument("--pos_coef", type=int, default=0, help="Whether to only have positive coefficients in the model")
     parser.add_argument("--gene_weight", type=int, default=1, help="Whether to use -log10(pval) for gene weight")
     parser.add_argument("--gene_weight_minmax", type=int, default=0, help="Whether to minmax gene weight")
-    parser.add_argument("--intercept", type=int, default=1, help="Whether to have intercept in elasticnet")
+    parser.add_argument("--intercept", type=int, default=0, help="Whether to have intercept in elasticnet")
     parser.add_argument("--num_alphas", type=int, default=100, help="Number of alphas for elasticnet")
     parser.add_argument("--num_folds", type=int, default=10, help="Number of k folds")
 

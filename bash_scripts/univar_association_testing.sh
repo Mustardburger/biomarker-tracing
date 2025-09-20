@@ -1,26 +1,29 @@
 #!/bin/bash
 
 # Load the modules
-module load R/4.3.0
+module load anaconda3/latest
+source activate scanpy-env
 
 # Get the names of params
-script_dir="/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/scripts/univar_association_testing.R"
+script_dir="python_main_cell_type_spec_method/univar_association_testing.py"
 atlas_path=$1
-pc_df_path=$2
-save_path=$3
-prot_data_path=$4
-num_pcs=$5
-mean_covar=$6
-dep_var=$7
-z_transform=$8
+atlas_smal_path=$2
+prot_data_path=$3
+save_path=$4
+disease=$5
+abs_hr=$6
+output_label=$7
+covar_df=$8
+covar_gini=$9
 
 # Version of the code when splitting the data by cell-tissue pair
-Rscript $script_dir \
---exp_df $atlas_path \
---pc_df $pc_df_path \
---prot_df $prot_data_path \
+python $script_dir \
+--atlas_path $atlas_path \
+--atlas_smal_path $atlas_smal_path \
+--prot_data_path $prot_data_path \
 --save_path $save_path \
---num_pc $num_pcs \
---mean_covar $mean_covar \
---dep_var $dep_var \
---z_transform $z_transform
+--disease $disease \
+--abs_hr $abs_hr \
+--output_label $output_label \
+--covar_df $covar_df \
+--covar_gini $covar_gini
