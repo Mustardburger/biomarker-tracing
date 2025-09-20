@@ -94,7 +94,8 @@ def main(args):
                 "--gene_weight", str(config['elasticnet_kfold']['gene_weight']),
             ]
             command = ["python", config['constants']["enet_script_path"]] + sub_args
-            submit_job_and_wait(command, wait_time=30)
+            # submit_job_and_wait(command, wait_time=30)
+            subprocess.run(command)
 
         # Run Lasso stability selection
         if (config["stability_selection"]["run"] == 1):
@@ -111,7 +112,8 @@ def main(args):
                 "--thres", str(config['stability_selection']['thres'])
             ]
             command = ["python", config['constants']["stab_sele_script_path"]] + sub_args
-            submit_job_and_wait(command, wait_time=10)
+            # submit_job_and_wait(command, wait_time=10)
+            subprocess.run(command)
 
         # Run random forests
         if (config["random_forest"]["run"] == 1):
@@ -134,7 +136,8 @@ def main(args):
                 "--n_permute_repeat", str(config['random_forest']['n_permute_repeat'])
             ]
             command = ["python", config['constants']["rf_script_path"]] + sub_args
-            submit_job_and_wait(command, wait_time=30)
+            # submit_job_and_wait(command, wait_time=30)
+            subprocess.run(command)
 
 
 if __name__ == "__main__":

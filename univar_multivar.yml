@@ -46,7 +46,7 @@ elasticnet_kfold:
 
 # Random forest
 random_forest:
-  run: 1
+  run: 0
   param_search: 1
   num_trees: 1000
   min_samples_split: 10
