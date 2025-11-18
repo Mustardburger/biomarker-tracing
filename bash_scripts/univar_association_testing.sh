@@ -15,6 +15,7 @@ abs_hr=$6
 output_label=$7
 covar_df=$8
 covar_gini=$9
+ztransform_type=${10}
 
 # Version of the code when splitting the data by cell-tissue pair
 python $script_dir \
@@ -26,4 +27,5 @@ python $script_dir \
 --abs_hr $abs_hr \
 --output_label $output_label \
 --covar_df $covar_df \
---covar_gini $covar_gini
+--covar_gini $covar_gini \
+--ztransform_type $ztransform_type

@@ -22,6 +22,7 @@ kfold_n=${11}
 n_permute_repeat=${12}
 param_search=${13}
 abs_hr=${14}
+ztransform_type=${15}
 
 # Version of the code when splitting the data by cell-tissue pair
 python $script_dir \
@@ -38,4 +39,5 @@ python $script_dir \
 --kfold_n $kfold_n \
 --n_permute_repeat $n_permute_repeat \
 --output_label $output_label \
---abs_hr $abs_hr
+--abs_hr $abs_hr \
+--ztransform_type $ztransform_type

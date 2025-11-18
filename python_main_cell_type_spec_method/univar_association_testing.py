@@ -60,8 +60,10 @@ def univariate_testing(args, atlas_smal, prot_spec_final, covar_df=None):
     prot_spec_final, _, _ = prep_data(args, prot_spec_final[[col, f"log{col}", "P_value"]], col)
 
     # atlas_smal has shape = (num genes, num cell types)
-    obj = StandardScaler()
-    scaled = obj.fit_transform(atlas_smal)
+    obj = StandardScaler(with_std=False)
+    if (args.ztransform_type == 1): scaled = obj.fit_transform(atlas_smal)
+    elif (args.ztransform_type == 2): scaled = obj.fit_transform(atlas_smal.T).T
+    else: scaled = atlas_smal.to_numpy()
     result_df = pd.DataFrame(scaled, columns=atlas_smal.columns, index=atlas_smal.index)
 
     # Because of python string format, replace all . with _
@@ -122,7 +124,10 @@ def univariate_testing(args, atlas_smal, prot_spec_final, covar_df=None):
 
         # One-sided test
         df_resid = model.df_resid
-        pval_one_sided = 1 - t.cdf(tval_indep, df=df_resid)
+        # pval_one_sided = 1 - t.cdf(tval_indep, df=df_resid)       # This is the original implementation
+        p_two_sided = 2 * (1 - t.cdf(abs(tval_indep), df=df_resid))         # # This is the implementation to match the results from seismic
+        if beta_indep > 0: pval_one_sided = p_two_sided / 2
+        else: pval_one_sided = 1 - p_two_sided / 2
 
         # Append
         final_df.append([old_ct, beta_indep, pval_indep, tval_indep, intc, pval_intc, tval_intc, r2, shapiro_p, pval_one_sided])
@@ -137,10 +142,9 @@ def univariate_testing(args, atlas_smal, prot_spec_final, covar_df=None):
     # FDR correction
     final_df["fdr_predictor"] = multipletests(final_df["pval_predictor"], method="fdr_bh")[1]
 
-    # FDR correction one-side, removing negative coeff samples first
-    pos_coeff = final_df[final_df["beta_predictor"] > 0.0].copy()[["cell_tissue", "pval_predictor_one_side"]].copy()
-    pos_coeff["fdr_one_side_predictor"] = multipletests(pos_coeff["pval_predictor_one_side"], method="fdr_bh")[1]
-    final_df = final_df.merge(pos_coeff.drop(columns="pval_predictor_one_side"), on="cell_tissue", how="left").fillna(1.0).sort_values("fdr_one_side_predictor")
+    # FDR correction one-side
+    final_df.loc[:, "fdr_one_side_predictor"] = multipletests(final_df["pval_predictor_one_side"], method="fdr_bh")[1]
+    final_df = final_df.sort_values("fdr_one_side_predictor")
 
     # Write output
     final_df.to_csv(
@@ -204,6 +208,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--covar_df", type=str, default=None)
     parser.add_argument("--covar_gini", type=int, default=0)
+    parser.add_argument("--ztransform_type", type=int, default=1, help="Whether to z transform on each cell type (1) or each gene (2) or no zscore (-1)")
 
     args = parser.parse_args()
     main(args)

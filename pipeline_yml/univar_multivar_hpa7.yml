@@ -1,0 +1,74 @@
+# Constants
+constants:
+  univar_script_path: "python_main_cell_type_spec_method/univar_association_testing_auto-script.py"
+  enet_script_path: "python_main_cell_type_spec_method/elastic_kfold_ver2_auto-script.py"
+  rf_script_path: "python_main_cell_type_spec_method/tree_based_methods_auto-script.py"
+  stab_sele_script_path: "python_main_cell_type_spec_method/stability_analyses_auto-script.py"
+
+
+# General inputs
+inputs:
+  atlas_smal_path: "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/results/atlas_data/human_protein_atlas_all_cell_tissues_hpa7.tsv"
+  atlas_path: "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/atlas_data/analysis/human_protein_atlas_single_cell/cell_tissue/specificity_metric/human_protein_atlas_sc_pseudobulk_gene_exp_logcounts.tsv"
+  
+  save_path: "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome/pipeline_results/pipeline_univar_multivar"
+  save_path_suffix: "hpa7"
+  
+  disease_prot_dir: "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/plasma_proteome/data"
+  disease_name:
+    - all
+  disease_type: "incident"
+  popu_type: "all"
+
+
+# Univariate regression specific params
+univariate:
+  covar_df: "None"
+  covar_gini: 0
+  abs_hr: 1
+  output_label: "z_score"
+  ztransform_type: -1
+
+# Transition
+univar_to_multivar:
+  column_to_choose: "fdr_one_side_predictor"
+  thres: 0.05
+
+
+# ElasticNet
+elasticnet_kfold:
+  run: 1    # If run set to 1, then run elasticnet_kfold
+  num_alpha: 100
+  num_folds: 10
+  gene_weight: 0
+  abs_hr: 1
+  output_label: "z_score"
+  ztransform_type: -1
+  pos_coef: 1
+
+
+# Random forest
+random_forest:
+  run: 1
+  param_search: 1
+  num_trees: 1000
+  min_samples_split: 10
+  min_samples_leaf: 2
+  max_samples: 0.7
+
+  kfold_n: 5
+  n_permute_repeat: 30
+  abs_hr: 1
+  output_label: "z_score"
+  ztransform_type: -1
+
+
+# Stability selection
+stability_selection:
+  run: 1
+  samp_method: "subsampling_diff_size"
+  optim_alpha_mode: "kneedle"
+  thres: 0.6
+  abs_hr: 1
+  output_label: "z_score"
+  ztransform_type: -1

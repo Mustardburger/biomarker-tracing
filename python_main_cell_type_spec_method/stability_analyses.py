@@ -25,12 +25,30 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     """
     Feature selection by stability selection
     """
+    na_genes = atlas_smal_merged[atlas_smal_merged.isna().any(axis=1)].index.tolist()
+    if len(na_genes) > 0:
+        logging.error(f"[WARNING] These genes have NAs in gene expression data!! {na_genes}")
+        logging.error(f"[WARNING] These genes will be removed in downstream analyses. "
+                    "To fix this, please adjust the gene expression data")
+
+        # Report significant proteomic genes among NA genes
+        na_sig_genes = prot_spec_final[
+            (prot_spec_final["P_value"] < 5e-7) &
+            (prot_spec_final["gene"].isin(na_genes))
+        ]["gene"].tolist()
+        logging.error(f"[WARNING] Among NA genes, these are those with proteomic pval < 5e-7: {na_sig_genes}")
+        atlas_smal_merged = atlas_smal_merged[~atlas_smal_merged.index.isin(na_genes)].copy()
+        prot_spec_final = prot_spec_final[~prot_spec_final["gene"].isin(na_genes)].copy()
+
+    # Initiate some variables
     obj = StandardScaler()
     col = "HR"
     if col not in prot_spec_final.columns: col = "OR"
 
     # Get the data
-    sub_atl = obj.fit_transform(atlas_smal_merged.to_numpy())
+    if (args.ztransform_type == 1): sub_atl = obj.fit_transform(atlas_smal_merged.to_numpy())
+    elif (args.ztransform_type == 2): sub_atl = obj.fit_transform(atlas_smal_merged.to_numpy().T).T
+    else: sub_atl = atlas_smal_merged.to_numpy()
     sub_atl = pd.DataFrame(sub_atl, columns=atlas_smal_merged.columns, index=atlas_smal_merged.index)
     tmp = sub_atl.merge(prot_spec_final[[col, f"log{col}", "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
     tmp, y, weight_col = prep_data(args, tmp, col)
@@ -105,6 +123,8 @@ if __name__ == "__main__":
     parser.add_argument("--abs_hr", type=int, default=0, help="Whether to set HR to abs value")
     parser.add_argument("--gene_weight_minmax", type=int, default=0, help="Whether to minmax gene weight")
     parser.add_argument("--thres", type=float, default=0.8, help="Cutoff to choose values")
+
+    parser.add_argument("--ztransform_type", type=int, default=1, help="Whether to z transform on each cell type (1) or each gene (2)")
 
     args = parser.parse_args()
     main(args)

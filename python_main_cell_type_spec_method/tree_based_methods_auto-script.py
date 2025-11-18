@@ -26,12 +26,12 @@ def main(in_args):
         save_full_path = os.path.join(save_path, dis_name)
         os.makedirs(save_path, exist_ok=True)
         log_path = save_full_path
-        log_path = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/"
+        # log_path = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/"
 
         args = [
             in_args.atlas_path, in_args.atlas_smal_path, base_path, save_full_path, dis_name, in_args.output_label,
             str(in_args.num_trees), str(in_args.min_samples_split), str(in_args.min_samples_leaf), str(in_args.max_samples),
-            str(in_args.kfold_n), str(in_args.n_permute_repeat), str(in_args.param_search), str(in_args.abs_hr)
+            str(in_args.kfold_n), str(in_args.n_permute_repeat), str(in_args.param_search), str(in_args.abs_hr), str(in_args.ztransform_type)
         ]
         command = ["bsub"] + lsf_params + ["-oo", f"{log_path}/{disease}.stdout", "-eo", f"{log_path}/{disease}.stderr"] + ["bash", BASH_SCRIPT_DIR] + args
         
@@ -67,6 +67,7 @@ if __name__ == "__main__":
     parser.add_argument("--kfold_n", type=int, default=5, help="Number of k for kfolds")
     parser.add_argument("--n_permute_repeat", type=int, default=30, help="Number of n permutations")
     parser.add_argument("--abs_hr", type=int, default=0, help="Whether to take abs_hr")
+    parser.add_argument("--ztransform_type", type=int, default=1, help="Whether to z transform on each cell type (1) or each gene (2)")
 
     args = parser.parse_args()
     main(args)

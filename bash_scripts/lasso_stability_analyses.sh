@@ -19,6 +19,7 @@ gene_weight=$9
 num_iter=${10}
 samp_method=${11}
 optim_alpha_mode=${12}
+ztransform_type=${13}
 
 # Version of the code when splitting the data by cell-tissue pair
 python $script_dir \
@@ -33,4 +34,5 @@ python $script_dir \
 --samp_method $samp_method \
 --optim_alpha_mode $optim_alpha_mode \
 --gene_weight $gene_weight \
---output_label $output_label
+--output_label $output_label \
+--ztransform_type $ztransform_type

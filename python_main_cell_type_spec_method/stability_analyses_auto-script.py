@@ -25,7 +25,7 @@ def main(in_args):
 
         args = [
             in_args.atlas_path, in_args.atlas_smal_path, base_path, save_full_path, dis_name, in_args.output_label,
-            str(in_args.thres), str(in_args.abs_hr)
+            str(in_args.thres), str(in_args.abs_hr), str(in_args.ztransform_type)
         ]
         command = ["bsub"] + lsf_params + ["-oo", f"{log_path}/{disease}.stdout", "-eo", f"{log_path}/{disease}.stderr"] + ["bash", BASH_SCRIPT_DIR] + args
         
@@ -55,7 +55,8 @@ if __name__ == "__main__":
     parser.add_argument("--samp_method", required=False, type=str, default="subsampling_diff_size")
     parser.add_argument("--optim_alpha_mode", required=False, type=str, default="kneedle")
     parser.add_argument("--thres", type=float, default=0.8, help="Cutoff to choose values")
-    parser.add_argument("--abs_hr", type=int, default=0, help="Whether to take absolute value of output")    
+    parser.add_argument("--abs_hr", type=int, default=0, help="Whether to take absolute value of output")   
+    parser.add_argument("--ztransform_type", type=int, default=1, help="Whether to z transform on each cell type (1) or each gene (2)") 
 
     args = parser.parse_args()
     main(args)

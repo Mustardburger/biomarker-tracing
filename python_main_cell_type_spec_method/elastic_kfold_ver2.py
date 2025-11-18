@@ -59,10 +59,14 @@ def _plot(inds, coef_df: pd.DataFrame, disease: str, save_path: str, save_name: 
 # For each disease, rank and plot the top most positive and top most negative coefficients
 def plot_top_coeff_ens(args, disease: str, coef_df: pd.DataFrame, perf_df: pd.DataFrame, 
                        coef_df_full: pd.DataFrame, full_model_df: pd.DataFrame, 
-                       save_path: str, num_coeffs=10):
+                       save_path: str):
 
     # Get the top params
     model_runs = full_model_df["model_run"].unique().tolist()
+
+    # Identify num_coeffs dynamically
+    num_features = coef_df.shape[1] - 1
+    num_coeffs = min(10, num_features // 2)
 
     # Get the coeffs for individual data folds
     for model_run in model_runs:
@@ -79,30 +83,33 @@ def plot_top_coeff_ens(args, disease: str, coef_df: pd.DataFrame, perf_df: pd.Da
 
 def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
 
-    # Some evidence that this might work. Let's build this pipeline for all diseases
-    # diseases = prot_df["Outcome"].unique().tolist()
-
     # Because here we run kfolds, it's important to do data normalization individually for each training fold
+    # Some specificity metric returns all NaN, report these genes
     X_df = atlas_smal_merged.copy()
+    na_genes = X_df[X_df.isna().any(axis=1)].index.tolist()
+    if len(na_genes) > 0:
+        logging.error(f"[WARNING] These genes have NAs in gene expression data!! {na_genes}")
+        logging.error(f"[WARNING] These genes will be removed in downstream analyses. "
+                    "To fix this, please adjust the gene expression data")
 
+        # Report significant proteomic genes among NA genes
+        na_sig_genes = prot_spec_final[
+            (prot_spec_final["P_value"] < 5e-7) &
+            (prot_spec_final["gene"].isin(na_genes))
+        ]["gene"].tolist()
+        logging.error(f"[WARNING] Among NA genes, these are those with proteomic pval < 5e-7: {na_sig_genes}")
+        X_df = X_df[~X_df.index.isin(na_genes)].copy()
+        prot_spec_final = prot_spec_final[~prot_spec_final["gene"].isin(na_genes)].copy()
+
+    # Hyperparam search space
     alphas, l1_ratios, scores, coeffs, models, conds, pearson_rs, mses, train_inds = [], [], [], [], [], [], [], [], []
-
-    # Some weird heuristics here, may need to rethink this:
-    num_features_thres = 70
-    if (X_df.shape[1] <= num_features_thres):
-        logging.error(f"Number of features below {num_features_thres}, hyperparam search on the denser end")
-        alphas_l = np.logspace(-3, 0, args.num_alphas)
-        l1_ratios_l = [(10e-5), 0.001, 0.005, 0.01, 0.05, 0.1, .2, .5, .7, .9, .95, .99]
-    else:
-        logging.error(f"Number of features above {num_features_thres}, hyperparam search on the sparser end")
-        alphas_l = np.logspace(-1, 1, args.num_alphas)
-        l1_ratios_l = [.05, .1, .2, .5, .7, .9, .95, .99]
-
+    alphas_l = np.logspace(-3, 1, args.num_alphas)
+    l1_ratios_l = [(10e-5), 0.001, 0.005, 0.01, 0.05, 0.1, .2, .5, .7, .9, .95, .99]
     num_ens = len(l1_ratios_l) * len(alphas_l)
 
+    # Create some necessary columns
     col = "HR"
     if col not in prot_spec_final.columns: col = "OR"
-
     sub_atl = X_df.loc[prot_spec_final["gene"].tolist(), :]
     tmp = sub_atl.merge(prot_spec_final[[col, f"log{col}", "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
     tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
@@ -116,13 +123,15 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
 
     kf = KFold(n_splits=args.num_folds, shuffle=True, random_state=42)
     data_splits = list(kf.split(tmp))
-    # logging.error(data_splits)
 
     logging.error(f"alpha_l = {alphas_l}")
     logging.error(f"l1_ratios_l = {l1_ratios_l}")
-    for alpha in alphas_l:
-        for l1_ratio in l1_ratios_l:
+    stop_search_l1_ratio, l1r_ind = False, -1
 
+    for alpha in sorted(alphas_l, reverse=True):
+        for l1_ratio in sorted(l1_ratios_l, reverse=True):
+
+            l1r_ind += 1
             logging.error(f"Working on alpha={alpha:.2f} l1_ratio={l1_ratio}")
             # For each set of params, run kfolds, then decide whether to keep this set of params
             alphas_sub, l1_ratios_sub, scores_sub, coeffs_sub, models_sub, conds_sub, pearson_rs_sub, mses_sub = [], [], [], [], [], [], [], []
@@ -136,12 +145,19 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
                 X_test = tmp_test.copy().drop(columns=[col, f"log{col}", "z_score", "P_value", "-log10(pval)_minmax", "-log10(pval)"])
 
                 # Normalize the data
-                obj = StandardScaler()
-                obj = obj.fit(X_train)
-                X_train, X_test = obj.transform(X_train), obj.transform(X_test)
+                if args.ztransform_type == 1:
+                    obj = StandardScaler()
+                    obj.fit(X_train)
+                    X_train, X_test = obj.transform(X_train), obj.transform(X_test) 
+                elif args.ztransform_type == 2:
+                    X_train = StandardScaler().fit_transform(X_train.T).T
+                    X_test = StandardScaler().fit_transform(X_test.T).T
+                else:
+                    X_train = X_train.to_numpy()
+                    X_test = X_test.to_numpy()
         
                 # Adjust the alphas carefully, because with full cell-tissue dataset, some alphas do not reach convergence
-                model = ElasticNet(l1_ratio=l1_ratio, alpha=alpha, positive=args.positive, fit_intercept=args.intercept, max_iter=5000)
+                model = ElasticNet(l1_ratio=l1_ratio, alpha=alpha, positive=args.pos_coef, fit_intercept=args.intercept, max_iter=5000)
     
                 # Catch whether model converges
                 with warnings.catch_warnings(record=True) as w:
@@ -150,8 +166,9 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
                     else: model.fit(X_train, hr_train)
                     if any(issubclass(warning.category, ConvergenceWarning) for warning in w):
                         logging.error(f">>> {args.disease} with alpha={alpha:.3f} and l1_ratio={l1_ratio:.3f} did not converge")
-                        continue
-            
+                        stop_search_l1_ratio = True
+                        break
+
                 # Score the model
                 #pred = model.predict(sub_atl)
                 #score = r2_score(hr, pred)
@@ -181,6 +198,17 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
             models.extend(models_sub)
             pearson_rs.extend(pearson_rs_sub)
             mses.extend(mses_sub)
+
+            # Check if stop_search_l1_ratio is True, that means the model fails to converge from the previous l1_ratio level
+            if stop_search_l1_ratio:
+                logging.error("l1_ratio from this run has failed to converge. No need to search for smaller l1_ratio")
+                break
+
+        # If stop_search_l1_ratio = True and l1r_ind = 0, then stop the search altogether
+        if stop_search_l1_ratio and l1r_ind == 0:
+            logging.error("alpha from this run has failed to converge for the largest l1_ratio. No need to search for smaller alpha")
+            break
+        stop_search_l1_ratio, l1r_ind = False, -1
                 
     perf_df = pd.DataFrame({"disease": conds, "alpha": alphas, "l1_ratio": l1_ratios, "pearson_r": pearson_rs, "mse": mses, "r2": scores})
     coef_np = np.array(coeffs)
@@ -209,13 +237,15 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     if args.abs_hr: hr = np.abs(hr)
     X_full = tmp.copy().drop(columns=[col, f"log{col}", "z_score", "P_value", "-log10(pval)_minmax", "-log10(pval)"])
     obj = StandardScaler()
-    X_full_trans = obj.fit_transform(X_full)
+    if (args.ztransform_type == 1): X_full_trans = obj.fit_transform(X_full)
+    elif (args.ztransform_type == 2): X_full_trans = obj.fit_transform(X_full.T).T
+    else: X_full_trans = X_full.to_numpy()
 
     # Retrain the model using these 2 models on the full dataset
     full_model_df, coeffs_full = [], []
     for model_config in [top_r2_model, top_pearson_model, top_mse_model]:
         alpha, l1_ratio = float(model_config.split("-")[0]), float(model_config.split("-")[1])
-        model = ElasticNet(l1_ratio=l1_ratio, alpha=alpha, positive=args.positive, fit_intercept=args.intercept, max_iter=5000)
+        model = ElasticNet(l1_ratio=l1_ratio, alpha=alpha, positive=args.pos_coef, fit_intercept=args.intercept, max_iter=5000)
 
         # Fit the model
         if args.gene_weight: model.fit(X_full_trans, hr, sample_weight=tmp[weight_col].tolist())
@@ -310,6 +340,8 @@ if __name__ == "__main__":
     parser.add_argument("--intercept", type=int, default=1, help="Whether to have intercept in elasticnet")
     parser.add_argument("--num_alphas", type=int, default=100, help="Number of alphas for elasticnet")
     parser.add_argument("--num_folds", type=int, default=10, help="Number of k folds")
+
+    parser.add_argument("--ztransform_type", type=int, default=1, help="Whether to z transform on each cell type (1) or each gene (2)")
 
     args = parser.parse_args()
     main(args)

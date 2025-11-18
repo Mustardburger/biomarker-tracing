@@ -16,6 +16,8 @@ num_folds=$7
 gene_weight=$8
 output_label=$9
 abs_hr=${10}
+ztransform_type=${11}
+pos_coef=${12}
 
 # Version of the code when splitting the data by cell-tissue pair
 python $script_dir \
@@ -28,4 +30,6 @@ python $script_dir \
 --num_folds $num_folds \
 --gene_weight $gene_weight \
 --output_label $output_label \
---abs_hr $abs_hr
+--abs_hr $abs_hr \
+--ztransform_type $ztransform_type \
+--pos_coef $pos_coef

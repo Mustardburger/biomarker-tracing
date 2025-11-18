@@ -31,7 +31,7 @@ def main(in_args):
         args = [
             in_args.atlas_path, in_args.atlas_smal_path, base_path,
             save_full_path, dis_name, str(in_args.abs_hr), in_args.output_label, 
-            in_args.covar_df, str(in_args.covar_gini)
+            in_args.covar_df, str(in_args.covar_gini), str(in_args.ztransform_type)
         ]
         command = ["bsub"] + lsf_params + ["-oo", f"{log_path}/{disease}.stdout", "-eo", f"{log_path}/{disease}.stderr"] + ["bash", BASH_SCRIPT_DIR] + args
         
@@ -61,6 +61,7 @@ if __name__ == "__main__":
     parser.add_argument("--covar_df", type=str, default="None", help="Covariate df")
     parser.add_argument("--covar_gini", type=int, default=0, help="Add Gini coefficient as covariate")
     parser.add_argument("--abs_hr", type=int, default=0, help="Whether to set HR to abs value")
+    parser.add_argument("--ztransform_type", type=int, default=1, help="Whether to z transform on each cell type (1) or each gene (2)")
     
     args = parser.parse_args()
     main(args)

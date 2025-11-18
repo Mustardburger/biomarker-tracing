@@ -9,10 +9,17 @@ def univar_top_features(config, base_save_path: str, dis_name: str):
     """
     # Select the features based on some threshold
     univar_path = f"{base_save_path}/{config['inputs']['disease_type']}_popu-{config['inputs']['popu_type']}/univar_association_testing/{dis_name}"
+    if not os.path.exists(f"{univar_path}/univar_regression_results.tsv"):
+        return None
+    
     res_df = pd.read_csv(f"{univar_path}/univar_regression_results.tsv", sep="\t")
     col = config["univar_to_multivar"]["column_to_choose"]
     thres = config["univar_to_multivar"]["thres"]
     selected = res_df[res_df[col] <= thres].copy()["cell_tissue"].tolist()
+
+    # If there is no feature left, return None
+    if len(selected) == 0:
+        return None
 
     # Create a new atlas_smal based on the selected features
     atlas_smal_path = pd.read_csv(config["inputs"]["atlas_smal_path"], sep="\t")
@@ -51,10 +58,13 @@ def main(args):
         else:
             dis_name = ".".join(disease.split(".")[:-1])
         dis_name = disease.split(".")[0]
-        if dis_name not in config['inputs']["disease_name"]:
-            continue
-        else:
-            logging.error(f"Start running on {dis_name}...")
+
+        # Check if running on correct disease - if keyword "all", then run all diseases
+        if config['inputs']["disease_name"][0] == "all": pass
+        elif dis_name not in config['inputs']["disease_name"] : continue
+        else: pass
+            
+        logging.error(f"Start running on {dis_name}...")
 
         # Run univariate regression
         logging.error(">>> Start running univariate regression")
@@ -68,14 +78,24 @@ def main(args):
             "--output_label", config['univariate']['output_label'],
             "--abs_hr", str(config['univariate']['abs_hr']),
             "--covar_df", config['univariate']['covar_df'],
-            "--covar_gini", str(config['univariate']['covar_gini'])
+            "--covar_gini", str(config['univariate']['covar_gini']),
+            "--ztransform_type", str(config['univariate']['ztransform_type'])
         ]
         command = ["python", config['constants']["univar_script_path"]] + sub_args
-        submit_job_and_wait(command, wait_time=10)
+        try:
+            submit_job_and_wait(command, wait_time=10)
+        except Exception as e:
+            # Something wrong with the run, then continue
+            logging.error(f">>> Something went wrong for univariate regression! Error log: {e}")
 
         # Extract the atlas_smal from the significant features found by univariate
         logging.error(">>> Extract significant features from univariate regression...")
         new_atlas_smal = univar_top_features(config, base_save_path, dis_name)
+
+        # If new_atlas_smal is None, then there is no significant feature
+        if new_atlas_smal is None:
+            logging.error(f">>> No significant features given the current univariate threshold, or univariate did not run successfully!")
+            continue
 
         # Run elasticnet
         if (config["elasticnet_kfold"]["run"] == 1):
@@ -92,6 +112,8 @@ def main(args):
                 "--num_alpha", str(config['elasticnet_kfold']['num_alpha']),
                 "--num_folds", str(config['elasticnet_kfold']['num_folds']),
                 "--gene_weight", str(config['elasticnet_kfold']['gene_weight']),
+                "--ztransform_type", str(config['elasticnet_kfold']['ztransform_type']),
+                "--pos_coef", str(config['elasticnet_kfold']['pos_coef'])
             ]
             command = ["python", config['constants']["enet_script_path"]] + sub_args
             # submit_job_and_wait(command, wait_time=30)
@@ -109,7 +131,8 @@ def main(args):
                 "--disease_name", dis_name,
                 "--output_label", config['stability_selection']['output_label'],
                 "--abs_hr", str(config['stability_selection']['abs_hr']),
-                "--thres", str(config['stability_selection']['thres'])
+                "--thres", str(config['stability_selection']['thres']),
+                "--ztransform_type", str(config['stability_selection']['ztransform_type'])
             ]
             command = ["python", config['constants']["stab_sele_script_path"]] + sub_args
             # submit_job_and_wait(command, wait_time=10)
@@ -133,7 +156,8 @@ def main(args):
                 "--min_samples_leaf", str(config['random_forest']['min_samples_leaf']),
                 "--max_samples", str(config['random_forest']['max_samples']),
                 "--kfold_n", str(config['random_forest']['kfold_n']),
-                "--n_permute_repeat", str(config['random_forest']['n_permute_repeat'])
+                "--n_permute_repeat", str(config['random_forest']['n_permute_repeat']),
+                "--ztransform_type", str(config['random_forest']['ztransform_type'])
             ]
             command = ["python", config['constants']["rf_script_path"]] + sub_args
             # submit_job_and_wait(command, wait_time=30)
