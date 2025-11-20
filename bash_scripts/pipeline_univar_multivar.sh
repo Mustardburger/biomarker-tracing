@@ -50,5 +50,6 @@ do
             --yml_file \"$yml_full_path\"
         "
         echo "$job" | bsub
+        break
     fi
 done

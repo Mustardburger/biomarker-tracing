@@ -15,7 +15,7 @@ from scipy.stats import pearsonr, spearmanr
 from scipy.optimize import curve_fit
 from sklearn.model_selection import KFold
 from sklearn.inspection import permutation_importance
-from utils import load_prot_data
+from utils import *
 
 warnings.simplefilter("ignore", RuntimeWarning)
 
@@ -29,35 +29,14 @@ def permute_importance(args, prot_spec_final: pd.DataFrame, atlas_smal: pd.DataF
     """
     # Transform the data
     X_df = atlas_smal.copy()
-    na_genes = X_df[X_df.isna().any(axis=1)].index.tolist()
-    if len(na_genes) > 0:
-        logging.error(f"[WARNING] These genes have NAs in gene expression data!! {na_genes}")
-        logging.error(f"[WARNING] These genes will be removed in downstream analyses. "
-                    "To fix this, please adjust the gene expression data")
-
-        # Report significant proteomic genes among NA genes
-        na_sig_genes = prot_spec_final[
-            (prot_spec_final["P_value"] < 5e-7) &
-            (prot_spec_final["gene"].isin(na_genes))
-        ]["gene"].tolist()
-        logging.error(f"[WARNING] Among NA genes, these are those with proteomic pval < 5e-7: {na_sig_genes}")
-        X_df = X_df[~X_df.index.isin(na_genes)].copy()
-        prot_spec_final = prot_spec_final[~prot_spec_final["gene"].isin(na_genes)].copy()
+    X_df, prot_spec_final = remove_na_from_training_data(X_df, prot_spec_final)
 
     # Preprocess some data
     col = "HR"
     if col not in prot_spec_final.columns: col = "OR"
-
     sub_atl = X_df.loc[prot_spec_final["gene"].tolist(), :]
     tmp = sub_atl.merge(prot_spec_final[[col, f"log{col}", "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
-    tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
-    tmp["z_score"] = (2*(tmp[col] > 1) - 1) * tmp["P_value"].apply(lambda x: stats.norm.isf(x / 2))
-
-    max_non_inf = tmp.loc[tmp["-log10(pval)"] != np.inf, "-log10(pval)"].max()
-    tmp = tmp.replace([np.inf, -np.inf], max_non_inf)
-    tmp["-log10(pval)_minmax"] = (tmp["-log10(pval)"] - tmp["-log10(pval)"].min()) / (tmp["-log10(pval)"].max() - tmp["-log10(pval)"].min())
-    hr = tmp[args.output_label]
-
+    tmp, hr, weight_col = prep_data(args, tmp, col=col)
     if args.abs_hr: hr = np.abs(hr)
     sub_atl = sub_atl.loc[tmp.index, :]
     feature_names = sub_atl.columns.tolist()
@@ -120,45 +99,24 @@ def hyperparam_search(args, prot_spec_final: pd.DataFrame, atlas_smal_merged: pd
     """
     Hyperparam search
     """
-    na_genes = atlas_smal_merged[atlas_smal_merged.isna().any(axis=1)].index.tolist()
-    if len(na_genes) > 0:
-        logging.error(f"[WARNING] These genes have NAs in gene expression data!! {na_genes}")
-        logging.error(f"[WARNING] These genes will be removed in downstream analyses. "
-                    "To fix this, please adjust the gene expression data")
+    # Remove NA from the training data
+    atlas_smal_merged, prot_spec_final = remove_na_from_training_data(atlas_smal_merged, prot_spec_final)
 
-        # Report significant proteomic genes among NA genes
-        na_sig_genes = prot_spec_final[
-            (prot_spec_final["P_value"] < 5e-7) &
-            (prot_spec_final["gene"].isin(na_genes))
-        ]["gene"].tolist()
-        logging.error(f"[WARNING] Among NA genes, these are those with proteomic pval < 5e-7: {na_sig_genes}")
-        atlas_smal_merged = atlas_smal_merged[~atlas_smal_merged.index.isin(na_genes)].copy()
-        prot_spec_final = prot_spec_final[~prot_spec_final["gene"].isin(na_genes)].copy()
-
-    # Preproces some data
+    # Define the column of interest
     col = "HR"
     if col not in prot_spec_final.columns: col = "OR"
-    obj = StandardScaler()
 
+    # z-score the data
     atlas_smal_subset = atlas_smal_merged
+    obj = StandardScaler()
     if (args.ztransform_type == 1): sub_atl = obj.fit_transform(atlas_smal_subset.to_numpy())
     elif args.ztransform_type == 2: sub_atl = obj.fit_transform(atlas_smal_subset.to_numpy().T).T
     else: sub_atl = atlas_smal_subset.to_numpy()
     sub_atl = pd.DataFrame(sub_atl, columns=atlas_smal_subset.columns, index=atlas_smal_subset.index)
 
-    logging.error(f"2: {sub_atl.shape}")
-    logging.error(sub_atl.head())
-
+    # Preprocess the data
     tmp = sub_atl.merge(prot_spec_final[[col, f"log{col}", "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
-    tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
-    tmp["z_score"] = (2*(tmp[col] > 1) - 1) * tmp["P_value"].apply(lambda x: stats.norm.isf(x / 2))
-    logging.error(f"3: {tmp.shape}")
-
-    max_non_inf = tmp.loc[tmp["-log10(pval)"] != np.inf, "-log10(pval)"].max()
-    tmp = tmp.replace([np.inf, -np.inf], max_non_inf)
-    tmp["-log10(pval)_minmax"] = (tmp["-log10(pval)"] - tmp["-log10(pval)"].min()) / (tmp["-log10(pval)"].max() - tmp["-log10(pval)"].min())
-    
-    hr = tmp[args.output_label]
+    tmp, hr, weight_col = prep_data(args, tmp, col=col)
     if args.abs_hr: hr = np.abs(hr)
     sub_atl = sub_atl.loc[tmp.index, :]
 
@@ -169,7 +127,6 @@ def hyperparam_search(args, prot_spec_final: pd.DataFrame, atlas_smal_merged: pd
         "max_depth": [None, 10, 20],
         "min_samples_leaf": [1, 4]
     }
-
     results = []
 
     for n in param_grid["n_estimators"]:
@@ -209,41 +166,23 @@ def random_forests(args, prot_spec_final: pd.DataFrame, atlas_smal_merged: pd.Da
     """
     Run random forests
     """
-    na_genes = atlas_smal_merged[atlas_smal_merged.isna().any(axis=1)].index.tolist()
-    if len(na_genes) > 0:
-        logging.error(f"[WARNING] These genes have NAs in gene expression data!! {na_genes}")
-        logging.error(f"[WARNING] These genes will be removed in downstream analyses. "
-                    "To fix this, please adjust the gene expression data")
+    atlas_smal_merged, prot_spec_final = remove_na_from_training_data(atlas_smal_merged, prot_spec_final)
 
-        # Report significant proteomic genes among NA genes
-        na_sig_genes = prot_spec_final[
-            (prot_spec_final["P_value"] < 5e-7) &
-            (prot_spec_final["gene"].isin(na_genes))
-        ]["gene"].tolist()
-        logging.error(f"[WARNING] Among NA genes, these are those with proteomic pval < 5e-7: {na_sig_genes}")
-        atlas_smal_merged = atlas_smal_merged[~atlas_smal_merged.index.isin(na_genes)].copy()
-        prot_spec_final = prot_spec_final[~prot_spec_final["gene"].isin(na_genes)].copy()
-
-    # Preprocess data
+    # Define the column
     col = "HR"
     if col not in prot_spec_final.columns: col = "OR"
-    obj = StandardScaler()
 
+    # z-score
     atlas_smal_subset = atlas_smal_merged
+    obj = StandardScaler()
     if (args.ztransform_type == 1): sub_atl = obj.fit_transform(atlas_smal_subset.to_numpy())
     elif args.ztransform_type == 2: sub_atl = obj.fit_transform(atlas_smal_subset.to_numpy().T).T
     else: sub_atl = atlas_smal_subset.to_numpy()
     sub_atl = pd.DataFrame(sub_atl, columns=atlas_smal_subset.columns, index=atlas_smal_subset.index)
 
+    # Preprocess the data
     tmp = sub_atl.merge(prot_spec_final[[col, f"log{col}", "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
-    tmp["-log10(pval)"] = -np.log10(tmp["P_value"])
-    tmp["z_score"] = (2*(tmp[col] > 1) - 1) * tmp["P_value"].apply(lambda x: stats.norm.isf(x / 2))
-
-    max_non_inf = tmp.loc[tmp["-log10(pval)"] != np.inf, "-log10(pval)"].max()
-    tmp = tmp.replace([np.inf, -np.inf], max_non_inf)
-    tmp["-log10(pval)_minmax"] = (tmp["-log10(pval)"] - tmp["-log10(pval)"].min()) / (tmp["-log10(pval)"].max() - tmp["-log10(pval)"].min())
-    
-    hr = tmp[args.output_label]
+    tmp, hr, weight_col = prep_data(args, tmp, col=col)
     if args.abs_hr: hr = np.abs(hr)
     sub_atl = sub_atl.loc[tmp.index, :]
 
@@ -268,17 +207,16 @@ def main(args):
     os.makedirs(args.save_path, exist_ok=True)
 
     # Load in the atlas data
-    full_atlas = pd.read_csv(args.atlas_path, sep="\t")
-    if "gene" in full_atlas.columns: full_atlas = full_atlas.set_index("gene")
     atlas_smal = pd.read_csv(args.atlas_smal_path, sep="\t").set_index("gene")
 
     # Load in prot data
     logging.error("Loading prot data...")
-    prot_spec_final = load_prot_data(args.prot_data_path, args.disease, full_atlas)
+    prot_spec_final = load_prot_data(args.prot_data_path, args.disease, atlas_smal)
     prot_spec_final.to_csv(f"{args.save_path}/prot_spec_final.tsv", sep="\t", index=False)
 
     # Convert some argument values to bool
     args.abs_hr = args.abs_hr == 1
+    args.gene_weight_minmax = False
 
     # If param search
     if (args.param_search == 1):
@@ -302,7 +240,6 @@ def main(args):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--atlas_path", type=str, help="Atlas path")
     parser.add_argument("--atlas_smal_path", type=str, help="Atlas smal path")
     parser.add_argument("--prot_data_path", type=str, help="Prot path")
     parser.add_argument("--save_path", type=str)

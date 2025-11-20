@@ -25,27 +25,14 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     """
     Feature selection by stability selection
     """
-    na_genes = atlas_smal_merged[atlas_smal_merged.isna().any(axis=1)].index.tolist()
-    if len(na_genes) > 0:
-        logging.error(f"[WARNING] These genes have NAs in gene expression data!! {na_genes}")
-        logging.error(f"[WARNING] These genes will be removed in downstream analyses. "
-                    "To fix this, please adjust the gene expression data")
-
-        # Report significant proteomic genes among NA genes
-        na_sig_genes = prot_spec_final[
-            (prot_spec_final["P_value"] < 5e-7) &
-            (prot_spec_final["gene"].isin(na_genes))
-        ]["gene"].tolist()
-        logging.error(f"[WARNING] Among NA genes, these are those with proteomic pval < 5e-7: {na_sig_genes}")
-        atlas_smal_merged = atlas_smal_merged[~atlas_smal_merged.index.isin(na_genes)].copy()
-        prot_spec_final = prot_spec_final[~prot_spec_final["gene"].isin(na_genes)].copy()
+    atlas_smal_merged, prot_spec_final = remove_na_from_training_data(atlas_smal_merged, prot_spec_final)
 
     # Initiate some variables
     obj = StandardScaler()
     col = "HR"
     if col not in prot_spec_final.columns: col = "OR"
 
-    # Get the data
+    # Preprocess the data
     if (args.ztransform_type == 1): sub_atl = obj.fit_transform(atlas_smal_merged.to_numpy())
     elif (args.ztransform_type == 2): sub_atl = obj.fit_transform(atlas_smal_merged.to_numpy().T).T
     else: sub_atl = atlas_smal_merged.to_numpy()
@@ -97,13 +84,11 @@ def main(args):
     args.abs_hr = args.abs_hr == 1
 
     # Load in the atlas data
-    full_atlas = pd.read_csv(args.atlas_path, sep="\t")
-    if "gene" in full_atlas.columns: full_atlas = full_atlas.set_index("gene")
     atlas_smal = pd.read_csv(args.atlas_smal_path, sep="\t").set_index("gene")
 
     # Load in prot data
     logging.error("Loading prot data...")
-    prot_spec_final = load_prot_data(args.prot_data_path, args.disease, full_atlas)
+    prot_spec_final = load_prot_data(args.prot_data_path, args.disease, atlas_smal)
     prot_spec_final.to_csv(f"{args.save_path}/prot_spec_final.tsv", sep="\t", index=False)
 
     # Train
@@ -113,7 +98,6 @@ def main(args):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--atlas_path", type=str, help="Atlas path")
     parser.add_argument("--atlas_smal_path", type=str, help="Atlas smal path")
     parser.add_argument("--prot_data_path", type=str, help="Prot path")
     parser.add_argument("--save_path", type=str)

@@ -24,7 +24,7 @@ def main(in_args):
         log_path = save_full_path
 
         args = [
-            in_args.atlas_path, in_args.atlas_smal_path, base_path, save_full_path, dis_name, in_args.output_label,
+            "placeholder", in_args.atlas_smal_path, base_path, save_full_path, dis_name, in_args.output_label,
             str(in_args.thres), str(in_args.abs_hr), str(in_args.ztransform_type)
         ]
         command = ["bsub"] + lsf_params + ["-oo", f"{log_path}/{disease}.stdout", "-eo", f"{log_path}/{disease}.stderr"] + ["bash", BASH_SCRIPT_DIR] + args
@@ -40,7 +40,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--atlas_smal_path", required=True, type=str)
-    parser.add_argument("--atlas_path", required=True, type=str)
     parser.add_argument("--save_path", required=True, type=str)
     parser.add_argument("--save_path_suffix", required=True, type=str, default="")
 

@@ -29,7 +29,7 @@ def main(in_args):
         # log_path = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc"
 
         args = [
-            in_args.atlas_path, in_args.atlas_smal_path, base_path,
+            "placeholder", in_args.atlas_smal_path, base_path,
             save_full_path, dis_name, str(in_args.abs_hr), in_args.output_label, 
             in_args.covar_df, str(in_args.covar_gini), str(in_args.ztransform_type)
         ]
@@ -46,7 +46,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--atlas_smal_path", required=True, type=str)
-    parser.add_argument("--atlas_path", required=True, type=str)
     parser.add_argument("--save_path", required=True, type=str)
     parser.add_argument("--save_path_suffix", required=True, type=str, default="")
 

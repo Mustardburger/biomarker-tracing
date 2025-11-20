@@ -27,10 +27,11 @@ def main(in_args):
         log_path = save_full_path
         # log_path = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc"
 
-        args = [in_args.atlas_path, in_args.atlas_smal_path, 
-                base_path, save_full_path, dis_name, str(in_args.num_alpha), 
-                str(in_args.num_folds), str(in_args.gene_weight), 
-                in_args.output_label, str(in_args.abs_hr), str(in_args.ztransform_type), str(in_args.pos_coef)
+        args = [
+            "placeholder", in_args.atlas_smal_path, 
+            base_path, save_full_path, dis_name, str(in_args.num_alpha), 
+            str(in_args.num_folds), str(in_args.gene_weight), 
+            in_args.output_label, str(in_args.abs_hr), str(in_args.ztransform_type), str(in_args.pos_coef)
         ]
         command = ["bsub"] + lsf_params + ["-oo", f"{log_path}/{disease}.stdout", "-eo", f"{log_path}/{disease}.stderr"] + ["bash", BASH_SCRIPT_DIR] + args
 
@@ -45,7 +46,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--atlas_smal_path", required=True, type=str)
-    parser.add_argument("--atlas_path", required=True, type=str)
     parser.add_argument("--save_path", required=True, type=str)
     parser.add_argument("--save_path_suffix", required=True, type=str, default="")
 

@@ -168,12 +168,10 @@ def main(args):
         json.dump(args_dict, json_file, indent=4)
 
     # Load in the atlas data
-    full_atlas = pd.read_csv(args.atlas_path, sep="\t")
-    if "gene" in full_atlas.columns: full_atlas = full_atlas.set_index("gene")
     atlas_smal = pd.read_csv(args.atlas_smal_path, sep="\t").set_index("gene")
 
     # Load in prot data
-    prot_spec_final = load_prot_data(args.prot_data_path, args.disease, full_atlas)
+    prot_spec_final = load_prot_data(args.prot_data_path, args.disease, atlas_smal)
     if "gene" in prot_spec_final.columns: prot_spec_final = prot_spec_final.set_index("gene")
     prot_spec_final.to_csv(f"{args.save_path}/prot_spec_final.tsv", sep="\t", index=False)
 
@@ -196,7 +194,6 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--atlas_path", type=str, help="Atlas path")
     parser.add_argument("--atlas_smal_path", type=str, help="Atlas smal path")
     parser.add_argument("--prot_data_path", type=str, help="Prot path")
     parser.add_argument("--save_path", type=str)
