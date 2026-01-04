@@ -2,7 +2,7 @@
 
 # Some params
 proj_path="/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/projects/Alzheimer/human_atlas/sub_projects/plasma_proteome"
-run_name="seismic_spec_multivar_loghr"     # For consistency, ensure $run_name here is similar to inputs/save_path_suffix in the yml files
+run_name="seismic_spec_shuffled_diseases"     # For consistency, ensure $run_name here is similar to inputs/save_path_suffix in the yml files
 yml_save_name="pipeline_yml_${run_name}"
 
 # Before running this pipeline, make sure that the yml files are populated by running python pipelines/utils.py
@@ -50,6 +50,5 @@ do
             --yml_file \"$yml_full_path\"
         "
         echo "$job" | bsub
-        break
     fi
 done

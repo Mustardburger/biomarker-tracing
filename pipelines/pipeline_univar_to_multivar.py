@@ -57,7 +57,6 @@ def main(args):
             dis_name = disease.split(".")[0]
         else:
             dis_name = ".".join(disease.split(".")[:-1])
-        dis_name = disease.split(".")[0]
 
         # Check if running on correct disease - if keyword "all", then run all diseases
         if config['inputs']["disease_name"][0] == "all": pass
@@ -72,6 +71,7 @@ def main(args):
         sub_args = [
             "--atlas_smal_path", config['inputs']['atlas_smal_path'], 
             "--save_path", base_save_path,
+            "--popu_type", config['inputs']['popu_type'],
             "--save_path_suffix", "",
             "--disease_name", dis_name,
             "--output_label", config['univariate']['output_label'],
