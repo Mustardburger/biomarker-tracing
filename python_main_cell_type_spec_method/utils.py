@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import os
+import os, logging
 import scipy.stats as stats
 
 GENE_ID_SYMBOLS = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/Alzheimer/CSF_proteomics_AD_onset/gene_id_symbol_df.tsv"
@@ -85,12 +85,34 @@ def load_prot_data(base_path: str, disease: str, atlas: pd.DataFrame):
     return prot_spec_final
 
 
+# A function to remove NA from the training data
+def remove_na_from_training_data(X_df: pd.DataFrame, prot_spec_final: pd.DataFrame):
+    """
+    Remove genes with NA values from the training data
+    """
+    na_genes = X_df[X_df.isna().any(axis=1)].index.tolist()
+    if len(na_genes) > 0:
+        logging.error(f"[WARNING] These genes have NAs in gene expression data!! {na_genes}")
+        logging.error(f"[WARNING] These genes will be removed in downstream analyses. "
+                    "To fix this, please adjust the gene expression data")
+
+        # Report significant proteomic genes among NA genes
+        na_sig_genes = prot_spec_final[
+            (prot_spec_final["P_value"] < 5e-7) &
+            (prot_spec_final["gene"].isin(na_genes))
+        ]["gene"].tolist()
+        logging.error(f"[WARNING] Among NA genes, these are those with proteomic pval < 5e-7: {na_sig_genes}")
+        X_df = X_df[~X_df.index.isin(na_genes)].copy()
+        prot_spec_final = prot_spec_final[~prot_spec_final["gene"].isin(na_genes)].copy()
+    
+    return X_df, prot_spec_final
+
+
 # A function to prep the data for training
 def prep_data(args, df: pd.DataFrame, col: str):
     """
     Add some columns that help in training
     """
-
     df["-log10(pval)"] = -np.log10(df["P_value"])
     df["z_score"] = (2*(df[col] > 1) - 1) * df["P_value"].apply(lambda x: stats.norm.isf(x / 2))
     max_non_inf = df.loc[df["-log10(pval)"] != np.inf, "-log10(pval)"].max()

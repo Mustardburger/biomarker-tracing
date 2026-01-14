@@ -8,7 +8,7 @@ def univar_top_features(config, base_save_path: str, dis_name: str):
     Select top univariate features
     """
     # Select the features based on some threshold
-    univar_path = f"{base_save_path}/{config['inputs']['disease_type']}_popu-{config['inputs']['popu_type']}/univar_association_testing/{dis_name}"
+    univar_path = f"{base_save_path}/{config['inputs']['disease_folder_name']}/univar_association_testing/{dis_name}"
     if not os.path.exists(f"{univar_path}/univar_regression_results.tsv"):
         return None
     
@@ -23,6 +23,7 @@ def univar_top_features(config, base_save_path: str, dis_name: str):
 
     # Create a new atlas_smal based on the selected features
     atlas_smal_path = pd.read_csv(config["inputs"]["atlas_smal_path"], sep="\t")
+    logging.error(atlas_smal_path.shape)
     atlas_df_sub = atlas_smal_path[selected + ["gene"]]
     atlas_df_sub.to_csv(
         f"{univar_path}/atlas_smal_path_sig_cel_tis_filtered.tsv", 
@@ -42,7 +43,7 @@ def main(args):
 
     # Some preprocessing and parsing
     logging.error(f"Preprocessing and parsing paths...")
-    base_path = f"{config['inputs']['disease_prot_dir']}/{config['inputs']['disease_type']}_popu-{config['inputs']['popu_type']}"
+    base_path = f"{config['inputs']['disease_prot_dir']}/{config['inputs']['disease_folder_name']}"
     diseases = os.listdir(base_path)
     if config['inputs']["save_path_suffix"] != "": save_path_suffix = f"_{config['inputs']['save_path_suffix']}"
     else: save_path_suffix = config['inputs']["save_path_suffix"]
@@ -57,7 +58,6 @@ def main(args):
             dis_name = disease.split(".")[0]
         else:
             dis_name = ".".join(disease.split(".")[:-1])
-        dis_name = disease.split(".")[0]
 
         # Check if running on correct disease - if keyword "all", then run all diseases
         if config['inputs']["disease_name"][0] == "all": pass
@@ -70,8 +70,9 @@ def main(args):
         logging.error(">>> Start running univariate regression")
         logging.error(f">>> Univariate params: {config['univariate']}")
         sub_args = [
-            "--atlas_smal_path", config['inputs']['atlas_smal_path'], 
-            "--atlas_path", config['inputs']['atlas_path'], 
+            "--atlas_smal_path", config['inputs']['atlas_smal_path'],
+            "--disease_prot_dir", config['inputs']['disease_prot_dir'],
+            "--disease_folder_name", config['inputs']['disease_folder_name'],
             "--save_path", base_save_path,
             "--save_path_suffix", "",
             "--disease_name", dis_name,
@@ -102,8 +103,9 @@ def main(args):
             logging.error(">>> Start running elasticnet...")
             logging.error(f">>> Elasticnet params: {config['elasticnet_kfold']}")
             sub_args = [
-                "--atlas_smal_path", new_atlas_smal, 
-                "--atlas_path", config['inputs']['atlas_path'], 
+                "--atlas_smal_path", new_atlas_smal,
+                "--disease_prot_dir", config['inputs']['disease_prot_dir'],
+                "--disease_folder_name", config['inputs']['disease_folder_name'], 
                 "--save_path", base_save_path,
                 "--save_path_suffix", "",
                 "--disease_name", dis_name,
@@ -116,7 +118,6 @@ def main(args):
                 "--pos_coef", str(config['elasticnet_kfold']['pos_coef'])
             ]
             command = ["python", config['constants']["enet_script_path"]] + sub_args
-            # submit_job_and_wait(command, wait_time=30)
             subprocess.run(command)
 
         # Run Lasso stability selection
@@ -124,8 +125,9 @@ def main(args):
             logging.error(">>> Start running stability selection...")
             logging.error(f">>> Stability selection params: {config['stability_selection']}")
             sub_args = [
-                "--atlas_smal_path", new_atlas_smal, 
-                "--atlas_path", config['inputs']['atlas_path'], 
+                "--atlas_smal_path", new_atlas_smal,
+                "--disease_prot_dir", config['inputs']['disease_prot_dir'],
+                "--disease_folder_name", config['inputs']['disease_folder_name'], 
                 "--save_path", base_save_path,
                 "--save_path_suffix", "",
                 "--disease_name", dis_name,
@@ -135,7 +137,6 @@ def main(args):
                 "--ztransform_type", str(config['stability_selection']['ztransform_type'])
             ]
             command = ["python", config['constants']["stab_sele_script_path"]] + sub_args
-            # submit_job_and_wait(command, wait_time=10)
             subprocess.run(command)
 
         # Run random forests
@@ -143,8 +144,9 @@ def main(args):
             logging.error(">>> Start running random_forest...")
             logging.error(f">>> Random_forest params: {config['random_forest']}")
             sub_args = [
-                "--atlas_smal_path", new_atlas_smal, 
-                "--atlas_path", config['inputs']['atlas_path'], 
+                "--atlas_smal_path", new_atlas_smal,
+                "--disease_prot_dir", config['inputs']['disease_prot_dir'],
+                "--disease_folder_name", config['inputs']['disease_folder_name'], 
                 "--save_path", base_save_path,
                 "--save_path_suffix", "",
                 "--disease_name", dis_name,
@@ -160,7 +162,6 @@ def main(args):
                 "--ztransform_type", str(config['random_forest']['ztransform_type'])
             ]
             command = ["python", config['constants']["rf_script_path"]] + sub_args
-            # submit_job_and_wait(command, wait_time=30)
             subprocess.run(command)
 
 
