@@ -1,0 +1,71 @@
+# Constants
+constants:
+  univar_script_path: "python_main_cell_type_spec_method/univar_association_testing_auto-script.py"
+  enet_script_path: "python_main_cell_type_spec_method/elastic_kfold_ver2_auto-script.py"
+  rf_script_path: "python_main_cell_type_spec_method/tree_based_methods_auto-script.py"
+  stab_sele_script_path: "python_main_cell_type_spec_method/stability_analyses_auto-script.py"
+
+
+# General inputs
+inputs:
+  atlas_smal_path: "sample_data/ample_atlas_data/human_protein_atlas_all_tissues.tsv"
+  
+  # The final full save path will be pipeline_results/pipeline_univar_multivar_sample_run
+  save_path: "pipeline_results/pipeline_univar_multivar"
+  save_path_suffix: "sample_run"
+  
+  # The full path to the sumstats dir is $disease_prot_dir/$disease_folder_name
+  # disease_name can either be one of the diseases in disease_prot_dir (e.g. Alcoholic_liver_disease)
+  # or there is a special keyword called "all" where all diseases will be run in a loop
+  disease_prot_dir: "sample_data"
+  disease_folder_name: "sample_sumstats"
+  disease_name:
+    - all
+
+
+# Univariate regression specific params
+univariate:
+  covar_df: "None"
+  covar_gini: 1
+  abs_hr: 1
+  output_label: "z_score"
+
+# Transition
+univar_to_multivar:
+  column_to_choose: "fdr_one_side_predictor"
+  thres: 0.05
+
+
+# ElasticNet
+elasticnet_kfold:
+  run: 1    # If run set to 1, then run elasticnet_kfold
+  num_alpha: 100
+  num_folds: 10
+  gene_weight: 0
+  abs_hr: 1
+  output_label: "z_score"
+
+
+# Random forest
+random_forest:
+  run: 1
+  param_search: 1
+  num_trees: 1000
+  min_samples_split: 10
+  min_samples_leaf: 2
+  max_samples: 0.7
+
+  kfold_n: 5
+  n_permute_repeat: 30
+  abs_hr: 1
+  output_label: "z_score"
+
+
+# Stability selection
+stability_selection:
+  run: 1
+  samp_method: "subsampling_diff_size"
+  optim_alpha_mode: "kneedle"
+  thres: 0.6
+  abs_hr: 1
+  output_label: "z_score"

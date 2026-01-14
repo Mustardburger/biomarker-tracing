@@ -88,7 +88,14 @@ def main(args):
 
     # Load in prot data
     logging.error("Loading prot data...")
-    prot_spec_final = load_prot_data(args.prot_data_path, args.disease, atlas_smal)
+    try:
+        # This function is only used for UK Biobank Phenome-Proteome data type
+        prot_spec_final = load_prot_data(args.prot_data_path, args.disease, atlas_smal)
+    except:
+        # If using other data sets, then the dataframe needs to have at most 4 columns: "gene", "P_value", either "HR" or "OR", and its "logHR" and "logOR"
+        # The gene column has Gene Entrez ID instead of gene symbols
+        # And the file has to be csv
+        prot_spec_final = pd.read_csv(f"{os.path.join(args.prot_data_path, args.disease)}.csv")
     prot_spec_final.to_csv(f"{args.save_path}/prot_spec_final.tsv", sep="\t", index=False)
 
     # Train

@@ -100,7 +100,10 @@ def train(args, atlas_smal_merged: pd.DataFrame, prot_spec_final: pd.DataFrame):
     # Prepare the training data
     col = "HR"
     if col not in prot_spec_final.columns: col = "OR"
-    sub_atl = X_df.loc[prot_spec_final["gene"].tolist(), :]
+    common_genes = list(
+        set(prot_spec_final["gene"].tolist()).intersection(set(X_df.index.tolist()))
+    )
+    sub_atl = X_df.loc[common_genes, :]
     tmp = sub_atl.merge(prot_spec_final[[col, f"log{col}", "gene", "P_value"]].set_index("gene"), right_index=True, left_index=True)
     tmp, _, weight_col = prep_data(args, tmp, col=col)
 
@@ -279,7 +282,14 @@ def main(args):
     atlas_smal = pd.read_csv(args.atlas_smal_path, sep="\t").set_index("gene")
 
     # Load in prot data
-    prot_spec_final = load_prot_data(args.prot_data_path, args.disease, atlas_smal)
+    try:
+        # This function is only used for UK Biobank Phenome-Proteome data type
+        prot_spec_final = load_prot_data(args.prot_data_path, args.disease, atlas_smal)
+    except:
+        # If using other data sets, then the dataframe needs to have at most 4 columns: "gene", "P_value", either "HR" or "OR", and its "logHR" and "logOR"
+        # The gene column has Gene Entrez ID instead of gene symbols
+        # And the file has to be csv
+        prot_spec_final = pd.read_csv(f"{os.path.join(args.prot_data_path, args.disease)}.csv")
     prot_spec_final.to_csv(f"{args.save_path}/prot_spec_final.tsv", sep="\t", index=False)
 
     # Convert some argument values to bool

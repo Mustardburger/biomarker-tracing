@@ -5,15 +5,14 @@ import os, subprocess, argparse
 # python $proj_path/scripts/tree_based_methods_auto-script.py --atlas_smal_path $proj_path/results/atlas_highly_var_genes_merged_corr-thres-0.8_graph-merged.tsv --atlas_path /sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/atlas_data/analysis/tabula_sapiens/cell_tissue/specificity_metric/tabula_sapiens_pseudobulk_gene_exp_logcounts.tsv --save_path_suffix random_forest_with_atlas_corr-thres-0.8 --output_label HR
 
 BASH_SCRIPT_DIR = "bash_scripts/tree_based_methods.sh"
-DISEASE_PROT_DIR = "/sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/datasets/plasma_proteome/data"
 
 
 def main(in_args):
 
-    base_path = f"{in_args.disease_prot_dir}/{in_args.disease_type}_popu-{in_args.popu_type}"
+    base_path = f"{in_args.disease_prot_dir}/{in_args.disease_folder_name}"
     diseases = os.listdir(base_path)
     if in_args.save_path_suffix != "": in_args.save_path_suffix = f"_{in_args.save_path_suffix}"
-    save_path = f"{in_args.save_path}/{in_args.disease_type}_popu-{in_args.popu_type}/tree_based_methods_random_forest{in_args.save_path_suffix}"
+    save_path = f"{in_args.save_path}/{in_args.disease_folder_name}/tree_based_methods_random_forest{in_args.save_path_suffix}"
     lsf_params = ["-J", "atlas", "-P", "acc_DiseaseGeneCell", "-n", "1", "-W", "1:30", "-R", "rusage[mem=2000]", "-M", "20000", "-L", "/bin/bash"]
 
     for disease in sorted(diseases):
@@ -49,13 +48,12 @@ if __name__ == "__main__":
     parser.add_argument("--save_path", required=True, type=str)
     parser.add_argument("--save_path_suffix", required=True, type=str, default="")
 
-    parser.add_argument("--disease_prot_dir", required=False, default=DISEASE_PROT_DIR)
+    parser.add_argument("--disease_prot_dir", required=True)
+    parser.add_argument("--disease_folder_name", required=True, type=str) 
     parser.add_argument("--bash_script_dir", required=False, default=BASH_SCRIPT_DIR)
     parser.add_argument("--output_label", required=False, type=str, default="HR")
 
     parser.add_argument("--disease_name", required=False, type=str, default="")    
-    parser.add_argument("--disease_type", required=False, type=str, default="incident")
-    parser.add_argument("--popu_type", required=False, type=str, default="all")
 
     parser.add_argument("--param_search", required=False, type=int, default=0)
     parser.add_argument("--num_trees", required=False, type=int, default=1000)
