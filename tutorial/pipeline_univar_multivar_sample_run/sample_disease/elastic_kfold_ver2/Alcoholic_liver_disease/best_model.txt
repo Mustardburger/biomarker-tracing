@@ -1,0 +1,3 @@
+Best model by r2 has alpha=0.001, l1_ratio=0.950                 with mean kfold r2=0.058, pearson_r=0.251, mse=18.154 
+Best model by pearson's R has alpha=0.001, l1_ratio=0.000,                 with mean kfold r2=0.044, pearson_r=0.256, , mse=18.405 
+Best model by MSE has alpha=0.001, l1_ratio=0.950,                 with mean kfold r2=0.058, pearson_r=0.251, , mse=18.154 

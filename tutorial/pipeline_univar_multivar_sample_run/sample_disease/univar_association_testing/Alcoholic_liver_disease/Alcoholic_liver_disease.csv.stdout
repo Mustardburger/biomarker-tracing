@@ -1,0 +1,41 @@
+Sender: LSF System <lsfadmin@lh06c17>
+Subject: Job 226196794: <atlas> in cluster <chimera> Done
+
+Job <atlas> was submitted from host <lh06c16> by user <nguyep07> in cluster <chimera> at Thu Jan 22 19:42:04 2026
+Job was executed on host(s) <lh06c17>, in queue <premium>, as user <nguyep07> in cluster <chimera> at Thu Jan 22 19:42:07 2026
+</hpc/users/nguyep07> was used as the home directory.
+</sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/biomarker-tracing> was used as the working directory.
+Started at Thu Jan 22 19:42:07 2026
+Terminated at Thu Jan 22 19:42:31 2026
+Results reported at Thu Jan 22 19:42:31 2026
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+bash bash_scripts/univar_association_testing.sh placeholder tutorial/human_protein_atlas_seismic_cell_spec_matrix.tsv tutorial/sample_disease tutorial/pipeline_univar_multivar_sample_run/sample_disease/univar_association_testing/Alcoholic_liver_disease Alcoholic_liver_disease 0 z_score None 0 -1
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   6.35 sec.
+    Max Memory :                                 126 MB
+    Average Memory :                             63.93 MB
+    Total Requested Memory :                     2000.00 MB
+    Delta Memory :                               1874.00 MB
+    Max Swap :                                   -
+    Max Processes :                              4
+    Max Threads :                                5
+    Run time :                                   24 sec.
+    Turnaround time :                            27 sec.
+
+The output (if any) follows:
+
+
+
+PS:
+
+Read file <tutorial/pipeline_univar_multivar_sample_run/sample_disease/univar_association_testing/Alcoholic_liver_disease/Alcoholic_liver_disease.csv.stderr> for stderr output of this job.
+

@@ -1,0 +1,19 @@
+{
+    "atlas_smal_path": "tutorial/pipeline_univar_multivar_sample_run/sample_disease/univar_association_testing/Alcoholic_liver_disease/atlas_smal_path_sig_cel_tis_filtered.tsv",
+    "prot_data_path": "tutorial/sample_disease",
+    "save_path": "tutorial/pipeline_univar_multivar_sample_run/sample_disease/tree_based_methods_random_forest/Alcoholic_liver_disease",
+    "disease": "Alcoholic_liver_disease",
+    "output_label": "z_score",
+    "abs_hr": false,
+    "param_search": 1,
+    "num_trees": 500,
+    "min_samples_split": 10,
+    "min_samples_leaf": 4,
+    "max_samples": 0.7,
+    "max_depth": 20,
+    "kfold_n": 5,
+    "n_permute_repeat": 30,
+    "ztransform_type": -1,
+    "gene_weight_minmax": false,
+    "max_features": "log2"
+}

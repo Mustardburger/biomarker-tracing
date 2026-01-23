@@ -1,0 +1,15 @@
+{
+    "atlas_smal_path": "tutorial/pipeline_univar_multivar_sample_run/sample_disease/univar_association_testing/Alcoholic_liver_disease/atlas_smal_path_sig_cel_tis_filtered.tsv",
+    "prot_data_path": "tutorial/sample_disease",
+    "save_path": "tutorial/pipeline_univar_multivar_sample_run/sample_disease/elastic_kfold_ver2/Alcoholic_liver_disease",
+    "disease": "Alcoholic_liver_disease",
+    "output_label": "z_score",
+    "abs_hr": 0,
+    "pos_coef": 0,
+    "gene_weight": 0,
+    "gene_weight_minmax": 0,
+    "intercept": 1,
+    "num_alphas": 100,
+    "num_folds": 10,
+    "ztransform_type": -1
+}

@@ -1,0 +1,12 @@
+{
+    "atlas_smal_path": "tutorial/human_protein_atlas_seismic_cell_spec_matrix.tsv",
+    "prot_data_path": "tutorial/sample_disease",
+    "save_path": "tutorial/pipeline_univar_multivar_sample_run/sample_disease/univar_association_testing/Alcoholic_liver_disease",
+    "disease": "Alcoholic_liver_disease",
+    "output_label": "z_score",
+    "abs_hr": 0,
+    "gene_weight_minmax": 0,
+    "covar_df": null,
+    "covar_gini": 0,
+    "ztransform_type": -1
+}

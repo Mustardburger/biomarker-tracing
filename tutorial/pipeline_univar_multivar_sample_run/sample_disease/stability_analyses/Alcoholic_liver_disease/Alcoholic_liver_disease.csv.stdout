@@ -1,0 +1,41 @@
+Sender: LSF System <lsfadmin@lh06c04>
+Subject: Job 226196802: <atlas> in cluster <chimera> Done
+
+Job <atlas> was submitted from host <lh06c16> by user <nguyep07> in cluster <chimera> at Thu Jan 22 19:42:35 2026
+Job was executed on host(s) <lh06c04>, in queue <premium>, as user <nguyep07> in cluster <chimera> at Thu Jan 22 19:42:36 2026
+</hpc/users/nguyep07> was used as the home directory.
+</sc/arion/projects/DiseaseGeneCell/Huang_lab_project/BioResNetwork/Phuc/biomarker-tracing> was used as the working directory.
+Started at Thu Jan 22 19:42:36 2026
+Terminated at Thu Jan 22 19:42:58 2026
+Results reported at Thu Jan 22 19:42:58 2026
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+bash bash_scripts/stability_analyses.sh placeholder tutorial/pipeline_univar_multivar_sample_run/sample_disease/univar_association_testing/Alcoholic_liver_disease/atlas_smal_path_sig_cel_tis_filtered.tsv tutorial/sample_disease tutorial/pipeline_univar_multivar_sample_run/sample_disease/stability_analyses/Alcoholic_liver_disease Alcoholic_liver_disease z_score 0.6 0 -1
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   6.92 sec.
+    Max Memory :                                 193 MB
+    Average Memory :                             107.77 MB
+    Total Requested Memory :                     2000.00 MB
+    Delta Memory :                               1807.00 MB
+    Max Swap :                                   -
+    Max Processes :                              4
+    Max Threads :                                5
+    Run time :                                   22 sec.
+    Turnaround time :                            23 sec.
+
+The output (if any) follows:
+
+
+
+PS:
+
+Read file <tutorial/pipeline_univar_multivar_sample_run/sample_disease/stability_analyses/Alcoholic_liver_disease/Alcoholic_liver_disease.csv.stderr> for stderr output of this job.
+

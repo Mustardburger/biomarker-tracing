@@ -8,17 +8,17 @@ constants:
 
 # General inputs
 inputs:
-  atlas_smal_path: "sample_data/ample_atlas_data/human_protein_atlas_all_tissues.tsv"
+  atlas_smal_path: "tutorial/human_protein_atlas_seismic_cell_spec_matrix.tsv"
   
   # The final full save path will be pipeline_results/pipeline_univar_multivar_sample_run
-  save_path: "pipeline_results/pipeline_univar_multivar"
+  save_path: "tutorial/pipeline_univar_multivar"
   save_path_suffix: "sample_run"
   
   # The full path to the sumstats dir is $disease_prot_dir/$disease_folder_name
   # disease_name can either be one of the diseases in disease_prot_dir (e.g. Alcoholic_liver_disease)
   # or there is a special keyword called "all" where all diseases will be run in a loop
-  disease_prot_dir: "sample_data"
-  disease_folder_name: "sample_sumstats"
+  disease_prot_dir: "tutorial"
+  disease_folder_name: "sample_disease"
   disease_name:
     - all
 
@@ -26,9 +26,10 @@ inputs:
 # Univariate regression specific params
 univariate:
   covar_df: "None"
-  covar_gini: 1
-  abs_hr: 1
+  covar_gini: 0
+  abs_hr: 0
   output_label: "z_score"
+  ztransform_type: -1
 
 # Transition
 univar_to_multivar:
@@ -42,8 +43,10 @@ elasticnet_kfold:
   num_alpha: 100
   num_folds: 10
   gene_weight: 0
-  abs_hr: 1
+  abs_hr: 0
   output_label: "z_score"
+  ztransform_type: -1
+  pos_coef: 0
 
 
 # Random forest
@@ -57,8 +60,9 @@ random_forest:
 
   kfold_n: 5
   n_permute_repeat: 30
-  abs_hr: 1
+  abs_hr: 0
   output_label: "z_score"
+  ztransform_type: -1
 
 
 # Stability selection
@@ -67,5 +71,6 @@ stability_selection:
   samp_method: "subsampling_diff_size"
   optim_alpha_mode: "kneedle"
   thres: 0.6
-  abs_hr: 1
+  abs_hr: 0
   output_label: "z_score"
+  ztransform_type: -1
