@@ -1,0 +1,11 @@
+old_code/
+pipelines/__pycache__
+python_main_cell_type_spec_method/__pycache__
+
+pipeline_yml/univar_multivar_seismic_gnpc_hpa.yml
+pipeline_yml/univar_multivar_seismic_gnpc_tab_sap.yml
+pipeline_yml/univar_multivar_seismic_shuffled_diseases.yml
+
+tutorial/log.err
+
+notes.txt
