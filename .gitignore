@@ -1,4 +1,5 @@
 old_code/
+analyses/
 pipelines/__pycache__
 python_main_cell_type_spec_method/__pycache__
 

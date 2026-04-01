@@ -66,33 +66,37 @@ def main(args):
             
         logging.error(f"Start running on {dis_name}...")
 
-        # Run univariate regression
-        logging.error(">>> Start running univariate regression")
-        logging.error(f">>> Univariate params: {config['univariate']}")
-        sub_args = [
-            "--atlas_smal_path", config['inputs']['atlas_smal_path'],
-            "--disease_prot_dir", config['inputs']['disease_prot_dir'],
-            "--disease_folder_name", config['inputs']['disease_folder_name'],
-            "--save_path", base_save_path,
-            "--save_path_suffix", "",
-            "--disease_name", dis_name,
-            "--output_label", config['univariate']['output_label'],
-            "--abs_hr", str(config['univariate']['abs_hr']),
-            "--covar_df", config['univariate']['covar_df'],
-            "--covar_gini", str(config['univariate']['covar_gini']),
-            "--ztransform_type", str(config['univariate']['ztransform_type'])
-        ]
-        command = ["python", config['constants']["univar_script_path"]] + sub_args
-        try:
-            submit_job_and_wait(command, wait_time=10)
-        except Exception as e:
-            # Something wrong with the run, then continue
-            logging.error(f">>> Something went wrong for univariate regression! Error log: {e}")
+        # Run univariate regression (if run is not set, then by default it is run)
+        if (config["univariate"].get("run", 1) == 1):
+            logging.error(">>> Start running univariate regression")
+            logging.error(f">>> Univariate params: {config['univariate']}")
+            sub_args = [
+                "--atlas_smal_path", config['inputs']['atlas_smal_path'],
+                "--disease_prot_dir", config['inputs']['disease_prot_dir'],
+                "--disease_folder_name", config['inputs']['disease_folder_name'],
+                "--save_path", base_save_path,
+                "--save_path_suffix", "",
+                "--disease_name", dis_name,
+                "--output_label", config['univariate']['output_label'],
+                "--abs_hr", str(config['univariate']['abs_hr']),
+                "--covar_df", config['univariate']['covar_df'],
+                "--covar_gini", str(config['univariate']['covar_gini']),
+                "--ztransform_type", str(config['univariate']['ztransform_type'])
+            ]
+            command = ["python", config['constants']["univar_script_path"]] + sub_args
+            try:
+                submit_job_and_wait(command, wait_time=10)
+            except Exception as e:
+                # Something wrong with the run, then continue
+                logging.error(f">>> Something went wrong for univariate regression! Error log: {e}")
 
-        # Extract the atlas_smal from the significant features found by univariate
-        logging.error(">>> Extract significant features from univariate regression...")
-        new_atlas_smal = univar_top_features(config, base_save_path, dis_name)
-
+            # Extract the atlas_smal from the significant features found by univariate
+            logging.error(">>> Extract significant features from univariate regression...")
+            new_atlas_smal = univar_top_features(config, base_save_path, dis_name)
+        else:
+            logging.error(">>> Univariate regression skipped, using the full dataset")
+            new_atlas_smal = config['inputs']['atlas_smal_path']
+            
         # If new_atlas_smal is None, then there is no significant feature
         if new_atlas_smal is None:
             logging.error(f">>> No significant features given the current univariate threshold, or univariate did not run successfully!")

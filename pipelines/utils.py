@@ -34,8 +34,11 @@ def create_yml_files(base_yml: str, diseases: list, save_path: str):
     os.makedirs(save_path, exist_ok=True)
     with open(base_yml, "r") as f:
         config = yaml.safe_load(f)
+        orig_disease = config["inputs"]["disease_name"]
 
     for disease in sorted(diseases):
+        if orig_disease[0] == "all": pass
+        elif disease not in orig_disease: continue
         new_config = copy.deepcopy(config)
         new_config["inputs"]["disease_name"] = [disease]
 
